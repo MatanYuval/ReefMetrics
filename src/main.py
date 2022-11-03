@@ -17,69 +17,19 @@ params = {'font.size': 18,
         'xtick.labelsize':'large',
         'ytick.labelsize':'large'}
 plt.rcParams.update(params)
-
-def entrophy_from_box_count_script(data_root, pcds, pc_max_size=32, trials=5):
-    for pcd_name in pcds:
-        print("==========================================")
-        print(f"=============={pcd_name}================")
-        print("==========================================")
-
-        # load point cloud (open3d) and normalize it
-        #pcd_name ="C2_19.pcd"
-        #data_root=DATA_ROOT
-        pcd_path = data_root / pcd_name
-        pcd = o3d.io.read_point_cloud(str(pcd_path))
-
-        fig = plt.figure(figsize=(2 * trials, 2))
-        for t in range(trials):
-            ax = add_3d_axes(fig, 1, trials, t + 1)
-            random_angle = np.random.rand(3) * 2 * np.pi
-            R = o3d.geometry.get_rotation_matrix_from_axis_angle(random_angle)
-            # pcd = pcd.rotate(R) # TODO
-
-            pcd.translate(-np.asarray(pcd.coor_num).min(0))
-            pcd.scale(pc_max_size / np.asarray(pcd.coor_num).max(), center=np.array([0, 0, 0]))
-            coor = np.asarray(pcd.coor_num)
-
-            plot_trial(ax, coor[::100], pc_max_size)
-
-            tree, max_power = BoxCounting.get_tree(coor)
-            tree = BoxCounting.get_tree(coor)
-            tree.statistic_summary_of_node(8)
-
-
-            ##CHanged by Matan:
-            pcd_name = "C12020.ply"
-            data_root = DATA_ROOT
-            pcd_path = data_root / pcd_name
-            pcd = o3d.io.read_point_cloud(str(pcd_path))
-
-            pcd.translate(-np.asarray(pcd.points).min(0))
-            pcd.scale(100, center=np.array([0, 0, 0]))
-            coor = np.asarray(pcd.points)
-
-            plot_trial(ax, coor[::100], pc_max_size)
-
-            tree = BoxCounting.get_tree(coor)
-            tree.statistic_summary_of_node(max_power)
-
-
+#trials is number of repetitions with random rotations 
 def box_counting_script(models_names_list, model_type, trials=1):
     models = get_models_list(models_list, model_type)
-
     all_models_res = {}
     for model, paths in models.items():
         # This list will summarize the result for this model
         model_res = []
-
-        # creating the rotation list to aplly same rotations for both years
+        # creating the rotation list
         random_angle_list = np.random.rand(trials, 3) * 2 * np.pi
         R_list = [o3d.geometry.get_rotation_matrix_from_axis_angle(random_angle) for random_angle in random_angle_list]
-
         for year, pcd_name in paths.items():
             # load point cloud (open3d) and normalize it
             pcd = read_model(pcd_name, model_type)
-
             print("================================================================")
             print(f"============== {f'{pcd_name} ({len(pcd.points):,} points)':<30} ================")
             print("================================================================")
@@ -93,7 +43,7 @@ def box_counting_script(models_names_list, model_type, trials=1):
             # fig for showing the rotations of the original pcd
             # pcd_fig = plt.figure(figsize=(2 * trials, 2))
             for t, R in enumerate(R_list):
-                pcd = pcd.rotate(R)
+                #pcd = pcd.rotate(R)
                 pcd.translate(-np.asarray(pcd.points).min(0))
                 coor = np.asarray(pcd.points)
 
@@ -128,21 +78,16 @@ def box_counting_script(models_names_list, model_type, trials=1):
 
 
 if __name__ == '__main__':
+     #create model list in settings and path
     models_list = ['C1', 'C2', 'C3', 'C4', 'C5', 'NR1', 'Kzaa']
-    models_list = ['IUI15C1', 'KsskyC1', 'KsskyC2','KsskyC3', 'KzaC4','NRIgloo1','NRIgloo2','NRIgloo3','NRIgloo4','NrObsC3','NrObsC4']
-    models_list = ['IUI15C1','KsskyC1','NrObsC4','KzaC4']
-    models_list = ['C3']
     model_type = 'mesh'
-    models_list = ['BoxFull']
-
-    all_models_res = box_counting_script(models_names_list=models_list, model_type=model_type, trials=30)
+   all_models_res = box_counting_script(models_names_list=models_list, model_type=model_type, trials=30)
     print("")
 
 
 import seaborn as sns
 
 arry = []
-
 legend = []
 fig, ax = plt.subplots(figsize=(8, 6))
 for model_res in all_models_res:
@@ -176,7 +121,7 @@ def FDperStep (arry):
                 arr2D[i,j] = 0
             if i != j:
                 #print (ii, jj)
-                #Delta SA/Delta Alpha(smoothing, step size)
+                
                 arr2D[i,j] = float((np.log(ii[1])-np.log(jj[1]))/(np.log(ii[0])-np.log(jj[0])))
     df = pd.DataFrame(arr2D)
     xs = [int(x[0]) for x in arry]
