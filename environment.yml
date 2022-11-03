@@ -1,0 +1,7 @@
+name: bc
+dependencies:
+  - open3d-admin::open3d
+  - conda-forge::matplotlib
+  - anaconda::networkx
+  - anaconda::scipy
+  - anaconda::seaborn
