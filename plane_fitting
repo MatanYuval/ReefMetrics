@@ -1,0 +1,71 @@
+import numpy as np
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+import open3d as o3d
+import pandas as pd
+import pyvista as pv
+mesh = o3d.io.read_triangle_mesh('F:/Backup/ZooidSegData/Princess/LobPrincess1/LobPrincess1.ply')
+mesh = o3d.io.read_triangle_mesh("E:/Downloads2/InnovationModels/KzaC4.ply")
+mesh.compute_normals()
+o3d.visualization.draw_geometries([mesh])
+box_size = .1
+verts = np.asarray(mesh.vertices)
+verts_complexity = pd.DataFrame()
+verts_complexity['points'] = [pt for pt in verts]
+verts_complexity['indices'] = [pt[0] for pt in enumerate(verts)]
+
+for i in range(1,500):
+    point = np.asarray(verts[np.random.randint(0, len(verts))])
+    verts_complexity[i] = np.nan
+    x = point[0]
+    y = point[1]
+    z = point[2]
+    x_min = x - box_size/2
+    x_max = x +  box_size/2
+    y_min = y -  box_size/2
+    y_max = y +  box_size/2
+    z_min =  z -  box_size/2
+    z_max = z +  box_size/2
+    pt_min = [x_min, y_min, z_min]
+    pt_max = [x_max, y_max, z_max]
+    vertss = pd.DataFrame(verts)
+    verts_sub = verts[((verts[:, 0] > x_min) & (verts[:, 0] < x_max)) &
+                       ((verts[:, 1] > y_min) & (verts[:, 1] < y_max)) &
+                       ((verts[:, 2] > z_min) & (verts[:, 2] < z_max))]
+    verts_sub_ind = [ind for ind, vrt in enumerate(verts) if ((vrt[0] > x_min) & (vrt[0] < x_max)) &
+                       ((vrt[1] > y_min) & (vrt[1] < y_max)) &
+                       ((vrt[2] > z_min) & (vrt[2] < z_max)) ]
+    mesh_new = o3d.geometry.PointCloud()
+    mesh_new.points = o3d.utility.Vector3dVector(verts_sub)
+    mesh_new.estimate_normals()
+    pcd = mesh_new
+    plane_model, inliers = pcd.segment_plane(distance_threshold=0.005,
+                                             ransac_n=3,
+                                             num_iterations=1000)
+    [a, b, c, d] = plane_model
+    #inlier_cloud = pcd.select_by_index(inliers)
+    #inlier_cloud.paint_uniform_color([1.0, 0, 0])
+    outlier_cloud = pcd.select_by_index(inliers, invert=True)
+    #outlier_cloud.paint_uniform_color([1.0, 1.0, 0])
+    #POintwise:
+    #for cnt, pnt in enumerate(pcd.points):
+        #print (cnt)
+        #dist = abs(plane_model.sum())/np.sqrt(pnt[0]**2 + pnt[1]**2 + pnt[2]**2)
+        #ind_inVert_complexity = verts_sub_ind[cnt]
+        #verts_complexity[i][ind_inVert_complexity] = dist
+    verts_score = (len(np.array(outlier_cloud.points)) / len(np.array(pcd.points)) * 100)
+    verts_complexity._set_value(verts_sub_ind,i, verts_score)
+    print(i)
+verts_complexity['mean'] = verts_complexity.iloc[:, 2:].mean(axis=1)
+verts_complexity['mean'].fillna(verts_complexity['mean'].mean(), inplace=True)
+densities = np.asarray(verts_complexity['mean'])
+##Visualize in Pyvista:
+pcd = o3d.geometry.PointCloud()
+pcd.points = o3d.utility.Vector3dVector(verts)
+#NOrmalize colors
+#densities = [(densities - densities.min()) / (densities.max() - densities.min())]
+point_cloud = pv.PolyData(np.asarray(pcd.points))
+boring_cmap = plt.cm.get_cmap("viridis", 5)
+point_cloud.plot(scalars = densities, render_points_as_spheres=True, point_size = 10)
+#END
