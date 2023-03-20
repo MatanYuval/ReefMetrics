@@ -1,71 +1,142 @@
 import numpy as np
 import time
+
 import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
-import pandas as pd
-import pyvista as pv
-mesh = o3d.io.read_triangle_mesh('F:/Backup/ZooidSegData/Princess/LobPrincess1/LobPrincess1.ply')
-mesh = o3d.io.read_triangle_mesh("E:/Downloads2/InnovationModels/KzaC4.ply")
-mesh.compute_normals()
-o3d.visualization.draw_geometries([mesh])
-box_size = .1
-verts = np.asarray(mesh.vertices)
-verts_complexity = pd.DataFrame()
-verts_complexity['points'] = [pt for pt in verts]
-verts_complexity['indices'] = [pt[0] for pt in enumerate(verts)]
+box_size = .05
+def plane_fitting(verts, box_size, n_iter = 500):
+    verts_complexity = pd.DataFrame()
+    verts_complexity['points'] = [pt for pt in verts]
+    verts_complexity['indices'] = [pt[0] for pt in enumerate(verts)]
+    for i in range(n_iter):
+        print (i)
+        point = np.asarray(verts[np.random.randint(0, len(verts))])
+        verts_complexity[i] = np.nan
+        x = point[0]
+        y = point[1]
+        z = point[2]
+        x_min = x - box_size/2
+        x_max = x +  box_size/2
+        y_min = y -  box_size/2
+        y_max = y +  box_size/2
+        z_min =  z -  box_size/2
+        z_max = z +  box_size/2
+        pt_min = [x_min, y_min, z_min]
+        pt_max = [x_max, y_max, z_max]
+        vertss = pd.DataFrame(verts)
+        verts_sub = verts[((verts[:, 0] > x_min) & (verts[:, 0] < x_max)) &
+                           ((verts[:, 1] > y_min) & (verts[:, 1] < y_max)) &
+                           ((verts[:, 2] > z_min) & (verts[:, 2] < z_max))]
+        verts_sub_ind = [ind for ind, vrt in enumerate(verts) if ((vrt[0] > x_min) & (vrt[0] < x_max)) &
+                           ((vrt[1] > y_min) & (vrt[1] < y_max)) &
+                           ((vrt[2] > z_min) & (vrt[2] < z_max)) ]
+        mesh_new = o3d.geometry.PointCloud()
+        mesh_new.points = o3d.utility.Vector3dVector(verts_sub)
+        mesh_new.estimate_normals()
+        pcd = mesh_new
+        plane_model, inliers = pcd.segment_plane(distance_threshold=0.005,
+                                                 ransac_n=3,
+                                                 num_iterations=1000)
+        [a, b, c, d] = plane_model
+        inlier_cloud = pcd.select_by_index(inliers)
+        inlier_cloud.paint_uniform_color([1.0, 0, 0])
+        outlier_cloud = pcd.select_by_index(inliers, invert=True)
+        outlier_cloud.paint_uniform_color([1.0, 1.0, 0])
+        #for cnt, pnt in enumerate(pcd.points):
+            #print (cnt)
+            #dist = abs(plane_model.sum())/np.sqrt(pnt[0]**2 + pnt[1]**2 + pnt[2]**2)
+            #ind_inVert_complexity = verts_sub_ind[cnt]
+            #verts_complexity[i][ind_inVert_complexity] = dist
+        verts_score = (len(np.array(outlier_cloud.points)) / len(np.array(pcd.points)) * 100)
+        #o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud, mesh])
+        verts_complexity._set_value(verts_sub_ind,i, verts_score)
+        #print(i)
+    verts_complexity['mean'] = verts_complexity.iloc[:, 2:].mean(axis=1)
+    verts_complexity['mean'].fillna(verts_complexity['mean'].mean(), inplace=True)
+    densities: object = np.asarray(verts_complexity['mean'])
+    return verts_complexity[['indices', 'points', 'mean']] , densities
 
-for i in range(1,500):
-    point = np.asarray(verts[np.random.randint(0, len(verts))])
-    verts_complexity[i] = np.nan
-    x = point[0]
-    y = point[1]
-    z = point[2]
-    x_min = x - box_size/2
-    x_max = x +  box_size/2
-    y_min = y -  box_size/2
-    y_max = y +  box_size/2
-    z_min =  z -  box_size/2
-    z_max = z +  box_size/2
-    pt_min = [x_min, y_min, z_min]
-    pt_max = [x_max, y_max, z_max]
-    vertss = pd.DataFrame(verts)
-    verts_sub = verts[((verts[:, 0] > x_min) & (verts[:, 0] < x_max)) &
-                       ((verts[:, 1] > y_min) & (verts[:, 1] < y_max)) &
-                       ((verts[:, 2] > z_min) & (verts[:, 2] < z_max))]
-    verts_sub_ind = [ind for ind, vrt in enumerate(verts) if ((vrt[0] > x_min) & (vrt[0] < x_max)) &
-                       ((vrt[1] > y_min) & (vrt[1] < y_max)) &
-                       ((vrt[2] > z_min) & (vrt[2] < z_max)) ]
-    mesh_new = o3d.geometry.PointCloud()
-    mesh_new.points = o3d.utility.Vector3dVector(verts_sub)
-    mesh_new.estimate_normals()
-    pcd = mesh_new
-    plane_model, inliers = pcd.segment_plane(distance_threshold=0.005,
-                                             ransac_n=3,
-                                             num_iterations=1000)
-    [a, b, c, d] = plane_model
-    #inlier_cloud = pcd.select_by_index(inliers)
-    #inlier_cloud.paint_uniform_color([1.0, 0, 0])
-    outlier_cloud = pcd.select_by_index(inliers, invert=True)
-    #outlier_cloud.paint_uniform_color([1.0, 1.0, 0])
-    #POintwise:
-    #for cnt, pnt in enumerate(pcd.points):
-        #print (cnt)
-        #dist = abs(plane_model.sum())/np.sqrt(pnt[0]**2 + pnt[1]**2 + pnt[2]**2)
-        #ind_inVert_complexity = verts_sub_ind[cnt]
-        #verts_complexity[i][ind_inVert_complexity] = dist
-    verts_score = (len(np.array(outlier_cloud.points)) / len(np.array(pcd.points)) * 100)
-    verts_complexity._set_value(verts_sub_ind,i, verts_score)
-    print(i)
-verts_complexity['mean'] = verts_complexity.iloc[:, 2:].mean(axis=1)
-verts_complexity['mean'].fillna(verts_complexity['mean'].mean(), inplace=True)
-densities = np.asarray(verts_complexity['mean'])
-##Visualize in Pyvista:
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(verts)
-#NOrmalize colors
-#densities = [(densities - densities.min()) / (densities.max() - densities.min())]
-point_cloud = pv.PolyData(np.asarray(pcd.points))
-boring_cmap = plt.cm.get_cmap("viridis", 5)
-point_cloud.plot(scalars = densities, render_points_as_spheres=True, point_size = 10)
-#END
+##PCA for pointcenters:
+import pandas as pd
+import re
+import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+shapes_data = pd.read_csv("F:/Backup/ZooidSegData/IUI/DipsIUI2/DipsIUI2.csv")
+num_of_shapes = shapes_data.shape[0]
+shapes_data['points3d'] = shapes_data['points3d'].apply(extract_points_from_text)
+shapes_data['center3D'] = shapes_data['center3D'].apply(extract_points_from_text)
+shapes_centers = np.array(shapes_data['center3D'].values.tolist()).astype(float).squeeze()
+plt.plot(shapes_centers)
+shapes_data = pd.read_csv("F:/Backup/ZooidSegData/Princess/LobPrincess2/LobPrincess2.csv")
+from sklearn.preprocessing import StandardScaler
+pts3D = pd.DataFrame(columns = ['group','x', 'y', 'z'])
+pts3D['group'] = shapes_data['group']
+pts3D['x'] =[pt[0][0] for pt in shapes_data['center3D']]
+pts3D['y'] =[pt[0][1] for pt in shapes_data['center3D']]
+pts3D['z'] =[pt[0][2] for pt in shapes_data['center3D']]
+points = pts3D
+x = points.iloc[:,1:4].values
+x = StandardScaler().fit_transform(x) # normalizing the features
+#Let's check whether the normalized data has a mean of zero and a standard deviation of one.
+plt.plot(x)
+np.mean(x),np.std(x)
+feat_cols = ['feature'+str(i) for i in range(x.shape[1])]
+normalised_pts = pd.DataFrame(x,columns=feat_cols)
+from sklearn.decomposition import PCA
+pca_pts = PCA(n_components=2)
+principalComponents_pts = pca_pts.fit_transform(x)
+principal_pts_Df = pd.DataFrame(data = principalComponents_pts
+             , columns = ['principal component 1', 'principal component 2'])
+import matplotlib.pyplot as plt
+plt.figure()
+plt.figure(figsize=(10,10))
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=14)
+plt.xlabel('Principal Component - 1',fontsize=20)
+plt.ylabel('Principal Component - 2',fontsize=20)
+plt.title("Principal Component Analysis of Points3D LoboBig2",fontsize=20)
+targets = np.unique(pts3D['group'])
+colors = [list(np.random.choice(range(256), size=3)) for i in range(len(targets))]
+colors = plt.cm.brg(np.linspace(0, 1, len(targets)))
+for i, target in enumerate(targets):
+    print(target)
+    indicesToKeep = points['group'] == target
+    print(len(indicesToKeep))
+    plt.scatter(principal_pts_Df.loc[indicesToKeep, 'principal component 1']
+               , principal_pts_Df.loc[indicesToKeep, 'principal component 2'], c = colors[i])
+
+plt.legend(targets,prop={'size': 15})
+
+
+#MDS:
+from sklearn.manifold import MDS
+from matplotlib import pyplot as plt
+import sklearn.datasets as dt
+import seaborn as sns
+import numpy as np
+from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+mds = MDS(random_state=0)
+X_transform = mds.fit_transform(x)
+stress = mds.stress_
+dist_manhattan = manhattan_distances(x)
+mds = MDS(dissimilarity='precomputed', random_state=0)
+# Get the embeddings
+X_transform_L1 = mds.fit_transform(dist_manhattan)
+
+colors = ['r', 'g', 'b', 'c', 'm']
+size = [64, 64, 64, 64, 64]
+fig = plt.figure(2, (10,4))
+ax = fig.add_subplot(121, projection='3d')
+plt.scatter(x[:,0], x[:,1], zs=x[:,2], s=size, c=colors)
+plt.title('Original Points')
+
+ax = fig.add_subplot(122)
+plt.scatter(X_transform[:,0], X_transform[:,1], s=size, c=colors)
+plt.title('Embedding in 2D')
+fig.subplots_adjust(wspace=.4, hspace=0.5)
+plt.show()
