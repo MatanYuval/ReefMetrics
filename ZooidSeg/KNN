@@ -1,1 +1,282 @@
-a
+import os
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import pathlib
+import pyvista as pv
+import re
+#import pymeshlab
+import torch
+from dgl.geometry import farthest_point_sampler
+
+import open3d as o3d
+import potpourri3d as pp3d
+import vedo
+from jedi.api import file_name
+from sklearn.neighbors import KDTree
+
+#from Matan_plane_fitting import plane_fitting
+from create_masks import get_face_areas
+from create_masks import cut_path_segment
+import seaborn as sns
+
+# extract points from vertices
+def extract_points_from_text(text):
+    string_numbers = re.findall("[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?", text)
+    points_array = np.array(string_numbers, dtype=np.float32).reshape(-1, 3)
+    return points_array
+
+print("========== Extracting the csv file ==========")
+shapes_data = pd.read_csv('F:/Backup/ZooidSegData/Princess/LobPrincess2/LobPrincess2.csv')
+num_of_shapes = shapes_data.shape[0]
+shapes_data['points3d'] = shapes_data['points3d'].apply(extract_points_from_text)
+shapes_data['center3D'] = shapes_data['center3D'].apply(extract_points_from_text)
+shapes_centers = np.array(shapes_data['center3D'].values.tolist()).astype(float).squeeze()
+euclidian_center_of_shapes = shapes_centers.mean(axis=0)
+shapes_data['center_euclidean_dist'] = np.linalg.norm(shapes_centers - euclidian_center_of_shapes, axis=1).tolist()
+print(f"========== Number of shapes in the coral is {num_of_shapes}  ==========")
+
+Model_name = 'PrincessLob1'
+Coral_type = 'Lobo'
+#Coral_type = 'Dips'
+def get_knn_corr(shapes_data, Model_name, Coral_type, fewer= True):
+    ###Search KNN for each shape:
+    X = [[shape[0][0],shape[0][1],shape[0][2]] for shape in shapes_data['center3D']]
+    tree = KDTree(X)
+    nearest_dist, nearest_ind = tree.query(X, k=6)  # k=2 nearest neighbors where k1 = identity
+    #Turn tree results to Dataframe:
+    Knn_dists = pd.DataFrame().astype(object)
+    Knn_dists['group'] = [i for i in shapes_data['group']] #Check if he counts itself.!
+    Knn_dists['nbrs'] = [0 for i in shapes_data['group']]
+    Knn_dists = Knn_dists.astype(object)
+    for cntr , i in enumerate(nearest_ind):
+        nnbrs = shapes_data['group'][i]
+        nnbrs = nnbrs.drop(cntr)
+        Knn_dists.at[cntr, 'nbrs'] = [nbr for nbr in nnbrs.values]
+    if fewer == True:
+        div_cls = ['Mid Division', 'Late Division', 'Early Division']
+        few_cls = ['Single', 'Division','Multi Division']
+        Knn_dists_plot = pd.DataFrame()
+        Knn_dists_plot['classes'] = [cls for cls in few_cls]
+        Knn_dists_plot['Num_objects'] = 0
+        for grpp in few_cls:
+            Knn_dists_plot[grpp] = 0
+        for i, shp in Knn_dists.iterrows():
+            #       print(i,shp)
+            if shp['group'] in div_cls:
+                print("t")
+                target_grp = 'Division'
+                target_row = Knn_dists_plot.loc[Knn_dists_plot['classes'] == target_grp]
+                target_row = target_row.index
+                Knn_dists_plot.at[target_row[0], 'Num_objects'] = Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                for sh in shp.values[1]:
+                    if sh in div_cls:
+                        Knn_dists_plot.at[target_row[0], 'Division'] = Knn_dists_plot.at[target_row[0], 'Division'] + 1
+                    elif sh == 'Multi Division':
+                        Knn_dists_plot.at[target_row[0], 'Multi Division'] = Knn_dists_plot.at[
+                                                                                 target_row[0], 'Multi Division'] + 1
+                    else:
+                        Knn_dists_plot.at[target_row[0], 'Single'] = Knn_dists_plot.at[target_row[0], 'Single'] + 1
+            elif shp['group'] == 'Multi Division':
+                target_grp = 'Multi Division'
+                target_row = Knn_dists_plot.loc[Knn_dists_plot['classes'] == target_grp]
+                target_row = target_row.index
+                Knn_dists_plot.at[target_row[0], 'Num_objects'] = Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                for sh in shp.values[1]:
+                    if sh in div_cls:
+                        Knn_dists_plot.at[target_row[0], 'Division'] = Knn_dists_plot.at[target_row[0], 'Division'] + 1
+                    elif sh == 'Multi Division':
+                        Knn_dists_plot.at[target_row[0], 'Multi Division'] = Knn_dists_plot.at[target_row[0], 'Multi Division'] + 1
+                    else:
+                        Knn_dists_plot.at[target_row[0], 'Single'] = Knn_dists_plot.at[target_row[0], 'Single'] + 1
+            else:
+                target_grp = 'Single'
+                target_row = Knn_dists_plot.loc[Knn_dists_plot['classes'] == target_grp]
+                target_row = target_row.index
+                Knn_dists_plot.at[target_row[0], 'Num_objects'] = Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                for sh in shp.values[1]:
+                    if sh in div_cls:
+                        Knn_dists_plot.at[target_row[0], 'Division'] = Knn_dists_plot.at[target_row[0], 'Division'] + 1
+                    elif sh == 'Multi division':
+                        Knn_dists_plot.at[target_row[0], 'Multi Division'] = Knn_dists_plot.at[
+                                                                                 target_row[0], 'Multi Division'] + 1
+                    else:
+                        Knn_dists_plot.at[target_row[0], 'Single'] = Knn_dists_plot.at[target_row[0], 'Single'] + 1
+    else:
+        #Make contingency table from long format:
+        Knn_dists_plot = pd.DataFrame()
+        Knn_dists_plot['classes'] = [cls for cls in set(Knn_dists['group'])]
+        Knn_dists_plot['Num_objects'] = 0
+        for grpp in Knn_dists['group']:
+            Knn_dists_plot[grpp] = 0
+        for i, shp in Knn_dists.iterrows():
+     #       print(i,shp)
+            target_grp = shp['group']
+            target_row = Knn_dists_plot.loc[Knn_dists_plot['classes']== target_grp]
+            target_row = target_row.index
+            Knn_dists_plot.at[target_row[0], 'Num_objects']=Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+            for sh in shp.values[1]:
+    #            print(sh)
+                Knn_dists_plot.at[target_row[0], sh] = Knn_dists_plot.at[target_row[0], sh] + 1
+    ##NEW:
+    Knn_dists_plot_matan = Knn_dists_plot.copy()
+    Knn_dists_plot_matan['Proportion(exp)'] = [(i / Knn_dists_plot['Num_objects'].sum() ).astype(float)*100 for i in
+                                          Knn_dists_plot['Num_objects']]
+
+    Knn_dists_plot_matan[[i for i in Knn_dists_plot_matan.classes]] = Knn_dists_plot_matan[
+        [i for i in Knn_dists_plot_matan.classes]].astype(float)
+    for i, row in Knn_dists_plot_matan.iterrows():
+        sum_row = 0
+        for k in Knn_dists_plot_matan.classes:
+            sum_row = sum_row+ Knn_dists_plot_matan.at[i,k]
+        Knn_dists_plot_matan.at[i, 'sum_row'] = sum_row
+        for k in Knn_dists_plot_matan.classes:
+            Knn_dists_plot_matan.at[i, str("Obs_"+k)] = row[k]/sum_row *100
+    for i, row in Knn_dists_plot_matan.iterrows():
+        for k in Knn_dists_plot_matan.classes:
+            obs = row[str("Obs_"+k)]
+            ind = Knn_dists_plot_matan[Knn_dists_plot_matan.classes == k]
+            exp =  Knn_dists_plot_matan.at[ind.index[0], 'Proportion(exp)']
+            Knn_dists_plot_matan.at[i, str("Diff_" + k)] =  (obs - exp)**2/(exp)
+    # for i, row in Knn_dists_plot_matan.iterrows():
+    #     for k in Knn_dists_plot_matan.classes:
+    #         obs = Knn_dists_plot_amit.at[i, k]
+    #         exp = 100/ len(Knn_dists_plot_amit)
+    #         Knn_dists_plot_matan.at[i, str("Diff_Amit" + k)] = obs - exp
+
+    #Give weight to each class by it's relative abundance-
+    # the more objects of a class the more you are likely to meet them
+    # Its a frequency domain with penalty for abundance
+    sum_shapes = Knn_dists_plot.Num_objects.sum()
+    Knn_dists_plot['Num_objects_un_normal'] = [sum_shapes / i for i in Knn_dists_plot['Num_objects']]
+    sum_shapes2 = Knn_dists_plot.Num_objects_un_normal.sum()
+    Knn_dists_plot['Num_objects_normal'] = [i / sum_shapes2 for i in Knn_dists_plot['Num_objects_un_normal']]
+    Knn_dists_plot_amit = Knn_dists_plot.copy()
+    Knn_dists_plot_amit[[i for i in Knn_dists_plot_amit.classes]] = Knn_dists_plot_amit[[i for i in Knn_dists_plot_amit.classes]].astype(float)
+    #Get weighted number of neighbors according to weight per class
+    for i,  row in Knn_dists_plot_amit.iterrows():
+        for k in Knn_dists_plot_amit.classes:
+            Wght =  Knn_dists_plot_amit[Knn_dists_plot_amit.classes == k]
+            Wght = Wght.Num_objects_normal
+            Knn_dists_plot_amit.at[i, k] = (row[k] * Wght)
+            #print("Weighted:", row[1][k], k)
+#go to percents per each row (ask why this is not percent per coral?)
+    for i, row in Knn_dists_plot_amit.iterrows():
+        Wght = np.sum([row[i] for i in Knn_dists_plot_amit.classes])
+        for k in Knn_dists_plot_amit.classes:
+            Knn_dists_plot_amit.at[i, k] = (row[k] / Wght)* 100
+    norm_knn_dists_plot = Knn_dists_plot_amit.copy()
+    # Draw heatMap
+    heat_map_df = pd.DataFrame(index= list(Knn_dists_plot.classes.values),
+                           columns=list(Knn_dists_plot.classes.values)).astype('float')
+    for i, _ in enumerate(heat_map_df.iterrows()):
+        for j, k in enumerate(heat_map_df.columns):
+            print (i, j, k, _[0])
+            target_val = norm_knn_dists_plot[norm_knn_dists_plot['classes']== _[0]][k]
+            heat_map_df.iloc[i,j] = float(target_val)
+    #Get diagonal for stacking models
+    diagonal = pd.DataFrame([heat_map_df.values[i, i] for i in range(len(heat_map_df))])
+    diagonal['group'] =[heat_map_df.columns[i] for i in range(len(heat_map_df))]
+    diagonal['Num_objects'] = Knn_dists_plot['Num_objects']
+    diagonal['Model_name'] = Model_name
+    diagonal.columns.values[0] = 'Aotucorr'
+    return diagonal
+folder = ('F:/Backup/ZooidSegData/ShapesDataLob/')
+files = os.listdir(folder)
+stats_df = pd.DataFrame()
+for file in files:
+    Model_name = file
+    Model_name = Model_name.replace('.csv','')
+    print(Model_name.replace('.csv',''))
+    print("========== Extracting the csv file ==========")
+    shapes_data = pd.read_csv(folder + file)
+    #shapes_data = pd.read_csv('F:/Backup/ZooidSegData/Princess/LobPrincess1/LobPrincess1.csv')
+    num_of_shapes = shapes_data.shape[0]
+    shapes_data['points3d'] = shapes_data['points3d'].apply(extract_points_from_text)
+    shapes_data['center3D'] = shapes_data['center3D'].apply(extract_points_from_text)
+    shapes_centers = np.array(shapes_data['center3D'].values.tolist()).astype(float).squeeze()
+    euclidian_center_of_shapes = shapes_centers.mean(axis=0)
+    shapes_data['center_euclidean_dist'] = np.linalg.norm(shapes_centers - euclidian_center_of_shapes, axis=1).tolist()
+    print(f"========== Number of shapes in the coral is {num_of_shapes}  ==========")
+    stats_df = stats_df.append(get_knn_corr(shapes_data, Model_name, Coral_type))
+df2 = stats_df.groupby('group').sum()
+sns.boxplot(data=stats_df, x="group", y="Aotucorr" )
+sns.violinplot(data=stats_df, x="group", y="Aotucorr")
+sns.swarmplot(data=stats_df, x="group", y="Aotucorr", hue = "Model_name",size = 20)
+#Knn_dists_plot = Knn_dists_plot.drop(['classes'],axis = 1)
+#norm_knn_dists_plot= norm_knn_dists_plot.drop(2,axis = 0)
+#norm_knn_dists_plot = norm_knn_dists_plot.reset_index(drop = True)
+#plt.rcParams.update({'font.size': 22})
+#norm_knn_dists_plot.drop('Num_objects',axis = 1).plot.bar(logy =False, title ='5 Nearest Neighbors in Dispastrea Big' ).set_xticks(
+#    norm_knn_dists_plot.index, norm_knn_dists_plot.classes, rotation=0)
+norm_knn_dists_plot.drop(['Num_objects',
+     'Num_objects_normal','Num_objects_un_normal'],axis = 1).plot.bar(
+    logy =False  , title ='5 Nearest Neighbors in LobophyliaPrincess1(Normalized- (neighbours/numObjects*)10').set_xticks(
+    norm_knn_dists_plot.index, norm_knn_dists_plot.classes, rotation=0)
+#Knn_dists_plot.drop('Num_objects',axis = 1).plot.bar(logy =False,
+#    title ='5 Nearest Neighbors in Dispastrea Big' ).set_xticks(
+#   Knn_dists_plot.index, Knn_dists_plot.classes, rotation=0)
+import seaborn as sns
+import matplotlib
+#matplotlib.rcParams.update({'font.size': 24})
+
+
+g = sns.heatmap(heat_map_df,cmap ='coolwarm',
+                annot=True, fmt = ".2f", annot_kws={"size":25})
+import seaborn as sns
+g.set_title('Auto correlation from KNN in Lobophyllia Princess 1')
+g.set_xticks(np.arange(0.5,5),list(heat_map_df.columns.values),rotation=0)
+dff.apply(pd.to_numeric).style.background_gradient(cmap ='coolwarm')
+dff = pd.DataFrame([[19.0, 10.0, 3.0, 5.0, 20.0],
+        [7.0, 25.0, 3.0, 5.0, 19.0],
+        [10.0, 11.0, 15.0, 7.0, 14.0],
+        [9.0, 10.0, 4.0, 15.0, 20.0],
+        [10.0, 11.0, 2.0, 5.0, 29.0]],
+    index= list(Knn_dists_plot.classes.values),
+                   columns= list(Knn_dists_plot.classes.values))
+Knn_dists_plot= Knn_dists_plot.drop(0,axis = 0)
+knn_dist_plot = Knn_dists_plot.drop('Num_objects',axis = 1)
+knn_dist_plot = knn_dist_plot.reset_index(drop = True)
+norm_knn_dists_plot.drop('Num_objects',axis = 1).plot.bar(logy =True, title ='5 Nearest Neighbors in Dispastrea Big' ).set_xticks(
+    norm_knn_dists_plot.index, norm_knn_dists_plot.classes, rotation=0)
+Knn_dists_plot.plot.bar()
+stats_df.plot()
+
+
+
+df = pd.read_csv('E:/Downloads2/annotations (3).csv')
+#1) remove top row
+top_row = np.array(list(set([i for i in (df['Row'])]))).min()
+df = df[df['Row'] != top_row]
+###2) Unify groups?? -->  Bleached =  ['FullyBleac','PartBleach', 'RecentDead']
+# Bleached =  ['Healthy', 'Other', 'Trf\ReefFr']
+df['Label'] = ['Bleached' if i in ['FullyBleac','PartBleach', 'RecentDead'] else 'Other' for i in df['Label']]
+### Eliminate points from the top?? to increase precision???
+
+df_plot = pd.DataFrame()
+df_plot['Annotator'] = []
+for i in set(df['Label']):
+    df_plot[i] =  0
+for ii, i in enumerate(set(df['Annotator'])):
+    df_plot.at[ii,'Annotator'] =  i
+df_plot = df_plot.fillna(0)
+for i, row in df.iterrows():
+    tar_row = row['Annotator']
+    tar_row = df_plot[df_plot['Annotator'] == tar_row].index
+    tar_row = tar_row[0]
+    tar_col = row['Label']
+    df_plot.at[tar_row, tar_col] = df_plot.at[tar_row, tar_col] +1
+df_plot.rename(columns ={'Trf\ReefFr': 'Trf'}, inplace= True )
+#got to percents:
+for i, row in df_plot.iterrows():
+    for k in df_plot.keys()[1:]:
+        sum_row = row[1:].sum()
+        df_plot.at[i, k ] = (df_plot.at[i, k ]/sum_row) *100
+
+dff_plot =pd.melt(df_plot, id_vars=['Annotator'], value_vars=[i for i in df_plot.keys()[1:]])
+
+g = sns.catplot(
+    data=dff_plot, kind="bar",
+    x="variable", y="value", hue="Annotator")
+df_plot.plot(kind='bar', stacked=True)
