@@ -313,3 +313,168 @@ for i, row in segregationI_df.iterrows():
         N = Knn_dists_plot_matan.Num_objects.sum()
         segregationI_df.at[i,k] = np.log((obs/NspI - obs))/((NspI - 1)/(N - NspI))
 
+
+
+
+
+Model_name = 'DipsIgloo2'
+Coral_type = 'Lobo'
+#Coral_type = 'Dips'
+
+def get_knn_corr(shapes_data, Model_name, Coral_type, fewer= False):
+    ###Search KNN for each shape:
+    stats_df = pd.DataFrame()
+    X = [[shape[0][0],shape[0][1],shape[0][2]] for shape in shapes_data['center3D']]
+    tree = KDTree(X)
+    nearest_dist, nearest_ind = tree.query(X, k=2)  # k=2 nearest neighbors where k1 = identity
+    #Turn tree results to Dataframe:
+    for perm in range(0, 99):
+        Knn_dists = pd.DataFrame().astype(object)
+        if perm > 0:
+            shapes_data['group'] = np.random.permutation(shapes_data['group'])
+        Knn_dists['group'] = [i for i in shapes_data['group']]
+        Knn_dists['nbrs'] = [0 for i in shapes_data['group']]
+        Knn_dists = Knn_dists.astype(object)
+        for cntr , i in enumerate(nearest_ind):
+            nnbrs = shapes_data['group'][i]
+            nnbrs = nnbrs.drop(cntr)
+            Knn_dists.at[cntr, 'nbrs'] = [nbr for nbr in nnbrs.values]
+        if fewer == True:
+            div_cls = ['Mid Division', 'Late Division', 'Early Division']
+            few_cls = ['Single', 'Division','Multi Division']
+            Knn_dists_plot = pd.DataFrame()
+            Knn_dists_plot['classes'] = [cls for cls in few_cls]
+            Knn_dists_plot['Num_objects'] = 0
+            for grpp in few_cls:
+                Knn_dists_plot[grpp] = 0
+            for i, shp in Knn_dists.iterrows():
+                #       print(i,shp)
+                if shp['group'] in div_cls:
+                #    print("t")
+                    target_grp = 'Division'
+                    target_row = Knn_dists_plot.loc[Knn_dists_plot['classes'] == target_grp]
+                    target_row = target_row.index
+                    Knn_dists_plot.at[target_row[0], 'Num_objects'] = Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                    for sh in shp.values[1]:
+                        if sh in div_cls:
+                            Knn_dists_plot.at[target_row[0], 'Division'] = Knn_dists_plot.at[target_row[0], 'Division'] + 1
+                        elif sh == 'Multi Division':
+                            Knn_dists_plot.at[target_row[0], 'Multi Division'] = Knn_dists_plot.at[
+                                                                                     target_row[0], 'Multi Division'] + 1
+                        else:
+                            Knn_dists_plot.at[target_row[0], 'Single'] = Knn_dists_plot.at[target_row[0], 'Single'] + 1
+                elif shp['group'] == 'Multi Division':
+                    target_grp = 'Multi Division'
+                    target_row = Knn_dists_plot.loc[Knn_dists_plot['classes'] == target_grp]
+                    target_row = target_row.index
+                    Knn_dists_plot.at[target_row[0], 'Num_objects'] = Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                    for sh in shp.values[1]:
+                        if sh in div_cls:
+                            Knn_dists_plot.at[target_row[0], 'Division'] = Knn_dists_plot.at[target_row[0], 'Division'] + 1
+                        elif sh == 'Multi Division':
+                            Knn_dists_plot.at[target_row[0], 'Multi Division'] = Knn_dists_plot.at[target_row[0], 'Multi Division'] + 1
+                        else:
+                            Knn_dists_plot.at[target_row[0], 'Single'] = Knn_dists_plot.at[target_row[0], 'Single'] + 1
+                else:
+                    target_grp = 'Single'
+                    target_row = Knn_dists_plot.loc[Knn_dists_plot['classes'] == target_grp]
+                    target_row = target_row.index
+                    Knn_dists_plot.at[target_row[0], 'Num_objects'] = Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                    for sh in shp.values[1]:
+                        if sh in div_cls:
+                            Knn_dists_plot.at[target_row[0], 'Division'] = Knn_dists_plot.at[target_row[0], 'Division'] + 1
+                        elif sh == 'Multi division':
+                            Knn_dists_plot.at[target_row[0], 'Multi Division'] = Knn_dists_plot.at[
+                                                                                     target_row[0], 'Multi Division'] + 1
+                        else:
+                            Knn_dists_plot.at[target_row[0], 'Single'] = Knn_dists_plot.at[target_row[0], 'Single'] + 1
+        else:
+            #Make contingency table from long format:
+            Knn_dists_plot = pd.DataFrame()
+            Knn_dists_plot['classes'] = [cls for cls in set(Knn_dists['group'])]
+            Knn_dists_plot['Num_objects'] = 0
+            for grpp in set(Knn_dists['group']):
+                Knn_dists_plot[grpp] = 0
+            for i, shp in Knn_dists.iterrows():
+         #       print(i,shp)
+                target_grp = shp['group']
+                target_row = Knn_dists_plot.loc[Knn_dists_plot['classes']== target_grp]
+                target_row = target_row.index
+                Knn_dists_plot.at[target_row[0], 'Num_objects']=Knn_dists_plot.at[target_row[0], 'Num_objects'] + 1
+                for sh in shp.values[1]:
+        #            print(sh)
+                    Knn_dists_plot.at[target_row[0], sh] = Knn_dists_plot.at[target_row[0], sh] + 1
+        ##NEW:
+        Knn_dists_plot_matan = Knn_dists_plot.copy()
+        Knn_dists_plot_matan['Proportion(exp)'] = [(i / Knn_dists_plot['Num_objects'].sum() ).astype(float)*100 for i in
+                                              Knn_dists_plot['Num_objects']]
+
+        Knn_dists_plot_matan[[i for i in Knn_dists_plot_matan.classes]] = Knn_dists_plot_matan[
+            [i for i in Knn_dists_plot_matan.classes]].astype(float)
+        for i, row in Knn_dists_plot_matan.iterrows():
+            sum_row = 0
+            for k in Knn_dists_plot_matan.classes:
+                sum_row = sum_row+ Knn_dists_plot_matan.at[i,k]
+            Knn_dists_plot_matan.at[i, 'sum_row'] = sum_row
+            for k in Knn_dists_plot_matan.classes:
+                Knn_dists_plot_matan.at[i, str("Obs_"+k)] = row[k]/sum_row *100
+        for i, row in Knn_dists_plot_matan.iterrows():
+            for k in Knn_dists_plot_matan.classes:
+                obs = row[str("Obs_"+k)]
+                ind = Knn_dists_plot_matan[Knn_dists_plot_matan.classes == k]
+                exp =  Knn_dists_plot_matan.at[ind.index[0], 'Proportion(exp)']
+                Knn_dists_plot_matan.at[i, str("Diff_" + k)] =  (obs - exp)**2/(exp)
+      #     # Draw heatMap
+        heat_map_df = pd.DataFrame(index= list(Knn_dists_plot.classes.values),
+                               columns=list(Knn_dists_plot.classes.values)).astype('float')
+        for i, _ in enumerate(heat_map_df.iterrows()):
+            for j, k in enumerate(heat_map_df.columns):
+     #           print (i, j, k, _[0])
+                target_val = Knn_dists_plot_matan[Knn_dists_plot_matan['classes']== _[0]]["Diff_"+k]
+                heat_map_df.iloc[i,j] = float(target_val)
+        #Get diagonal for stacking models
+        diagonal = pd.DataFrame([heat_map_df.values[i, i] for i in range(len(heat_map_df))])
+        diagonal['group'] =[heat_map_df.columns[i] for i in range(len(heat_map_df))]
+        diagonal['Num_objects'] = Knn_dists_plot['Num_objects']
+        diagonal['Model_name'] = Model_name
+        diagonal['Permutation'] = perm
+        diagonal.columns.values[0] = 'Aotucorr'
+        stats_df= stats_df.append(diagonal)
+    return stats_df
+def plot_hists(stats_df):
+    observed = stats_df[stats_df.Permutation == 0 ]
+    permutatitons = stats_df[stats_df.Permutation != 0 ]
+    f = plt.figure()
+    for i, grp in enumerate(set(stats_df.group)):
+        f.add_subplot(2, 3, i+1)
+        df = stats_df[stats_df.group == grp ]
+        p_value = np.percentile(df.Aotucorr, 90)
+        sns.histplot(data=df.Aotucorr, label = grp, legend=grp).set(
+        title=grp)
+        sns.kdeplot(data=df.Aotucorr, label=grp, legend=grp).set(
+            title=grp)
+        plt.axvline(observed.at[i,'Aotucorr'], color = 'red', linestyle='--')
+        if observed.at[i, 'Aotucorr']> p_value:
+            plt.text(x=observed.at[i,'Aotucorr'], y=plt.ylim()[1]*.9, s='*',
+                     color = 'red', size = 'xx-large')
+        f.suptitle(Model_name)
+folder = ('F:/Backup/ZooidSegData/ShapesDataDips/')
+files = os.listdir(folder)
+stats_df = pd.DataFrame()
+for file in files:
+    Model_name = file
+    Model_name = Model_name.replace('.csv','')
+    print(Model_name.replace('.csv',''))
+    print("========== Extracting the csv file ==========")
+    shapes_data = pd.read_csv(folder + file)
+    #shapes_data = pd.read_csv('F:/Backup/ZooidSegData/Princess/LobPrincess1/LobPrincess1.csv')
+    num_of_shapes = shapes_data.shape[0]
+    shapes_data['points3d'] = shapes_data['points3d'].apply(extract_points_from_text)
+    shapes_data['center3D'] = shapes_data['center3D'].apply(extract_points_from_text)
+    shapes_centers = np.array(shapes_data['center3D'].values.tolist()).astype(float).squeeze()
+    euclidian_center_of_shapes = shapes_centers.mean(axis=0)
+    shapes_data['center_euclidean_dist'] = np.linalg.norm(shapes_centers - euclidian_center_of_shapes, axis=1).tolist()
+    print(f"========== Number of shapes in the coral is {num_of_shapes}  ==========")
+    stats_df = pd.DataFrame()
+    stats_df =  get_knn_corr(shapes_data, Model_name, Coral_type)
+    plot_hists(stats_df)
