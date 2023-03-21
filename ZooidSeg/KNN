@@ -280,3 +280,36 @@ g = sns.catplot(
     data=dff_plot, kind="bar",
     x="variable", y="value", hue="Annotator")
 df_plot.plot(kind='bar', stacked=True)
+
+
+
+
+
+
+##SEGREGATION TEST FROM https://cran.r-project.org/web/packages/dixon/dixon.pdfwhere
+# N[i] is the number of individuals of species i,
+
+# N[ii] is the frequency of species i as neighbor of especies i and
+
+# N is the total number of locations.
+
+# Values of S[i] larger than 0 indicate that
+
+# species i is segregated; the larger the value of S[i], the more extreme the segregation. Values of S[i]
+
+# less than 0 indicate that species i is is found as neighbor of itself less than expected under random
+# labelling. Values of S[i] close to 0 are consistent with random labelling of the neighbors of species
+# i.
+
+#S[i] = log[(N[ii]/(N[i] − N[ii])]/[(N[i] − 1)/(N − N[i])]
+segregationI_df = Knn_dists_plot_matan.copy()
+for i, row in segregationI_df.iterrows():
+    # N[i] is the number of individuals of species i,
+    NspI = row.Num_objects
+    for k in Knn_dists_plot_matan.classes:
+        # N[ii] is the frequency of species i as neighbor of especies i and
+        obs = row[str("Obs_" + k)]
+        # N is the total number of locations. XXMAKE SURE THIS IS THE SUM OF AALL OBSERVATIONS!!!!
+        N = Knn_dists_plot_matan.Num_objects.sum()
+        segregationI_df.at[i,k] = np.log((obs/NspI - obs))/((NspI - 1)/(N - NspI))
+
