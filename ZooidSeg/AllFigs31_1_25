@@ -1,0 +1,1442 @@
+###FIG S_3: 
+
+# Load necessary libraries
+library(readr)
+library(dplyr)
+library(lme4)
+install.packages("broom")
+install.packages("multcompView")
+library("broom")
+library(tidyr)
+install.packages("multcomp")
+library(multcomp)
+# Load the necessary libraries
+library(effects)
+library(ggplot2)
+# Read the specific file into Lob_Perimeters_andCenters
+Lob_Perimeters_andCenters <- read_csv("D:/allPrimeters_andCenters_lob_fewGroups.csv")
+unique_models <- unique(Lob_Perimeters_andCenters$model)
+# Multiply `perimeter3D` in Lob_Perimeters_andCenters by 100
+Lob_Perimeters_andCenters <- Lob_Perimeters_andCenters %>%
+  mutate(perimeter3D = perimeter3D * 100)
+# Get all CSV files from the specified folder
+files <- list.files("D:/Dips_Shapes_data/CSV", pattern = "\\.csv$", full.names = TRUE)
+
+# Combine all files into one dataframe
+Dips_Perimeters_andCenters <- files %>%
+  lapply(read_csv) %>%  # Read each file
+  bind_rows()           # Combine into one dataframe
+unique(Dips_Perimeters_andCenters$group)
+# Display the first few rows of each dataframe
+head(Lob_Perimeters_andCenters)
+head(Dips_Perimeters_andCenters)
+Dips_Perimeters_andCenters <- Dips_Perimeters_andCenters %>%
+  mutate(perimeter3D = perimeter3D * 100)
+Lob_Perimeters_andCenters$group <- factor(
+  Lob_Perimeters_andCenters$group,
+  levels = c("Single", "Division", "Multi Division")
+)
+unique(Lob_Perimeters_andCenters$model)
+Lob_Perimeters_andCenters <- Lob_Perimeters_andCenters %>%
+  filter(!model %in% c("LobPrincess2_1", "LobPrincess2_2", "LobNR1_2", "LobSatil1"))
+
+
+# Violin plot with jittered points
+ggplot(Lob_Perimeters_andCenters, aes(x = group, y = perimeter3D, color = model)) +
+  geom_violin(aes(fill = model), alpha = 0.3, position = position_dodge(width = 0.8)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), 
+              size = 2, alpha = 0.5) +
+  labs(
+    title = "Perimeter3D by Group (Lobophyllia)",
+    x = "Group",
+    y = "Perimeter3D",
+    color = "Model",
+    fill = "Model"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+summary(Lob_Perimeters_andCenters
+)
+Dips_Perimeters_andCenters <- Dips_Perimeters_andCenters %>%
+  mutate(group = ifelse(group %in% c("Early Division", "Mid Division"), "Division", group))
+Dips_Perimeters_andCenters <- Dips_Perimeters_andCenters %>%
+  filter(group != "Multi Division")
+
+
+Dips_Perimeters_andCenters$group <- factor(
+  Dips_Perimeters_andCenters$group,
+  levels = c("Single", "Division", "Late Division")
+)
+
+# Fit the linear mixed-effects model
+model <- lmer(perimeter3D ~ group + (1 | model), data = Lob_Perimeters_andCenters)
+# Extract the effects for the 'group' predictor
+group_effects <- as.data.frame(effect("group", model))
+group_effects$cumulative <- cumsum(group_effects$fit)
+group_means <- Lob_Perimeters_andCenters %>%
+  group_by(group) %>%
+  summarise(mean_perimeter = mean(perimeter3D))
+
+print(estimate_values)
+# Set x-axis limits based on the range of perimeter3D
+x_limits <- range(Lob_Perimeters_andCenters$perimeter3D, na.rm = TRUE)
+x_limits <- range(5, 17) 
+ggplot(Dips_Perimeters_andCenters, aes(x = perimeter3D, fill = group)) +
+  geom_density(size = 1.5, alpha = 0.7) +  
+  coord_polar() +
+  theme_minimal() + geom_segment(aes(x = 4, xend = 7, y = 0.5, yend = 0.5),
+                                 color = "black", size = 1.2, linetype = "dashed") +
+  xlim(c(3.5, 7.5)) +
+  theme_minimal() +
+  #geom_vline(xintercept = c(5, 05.8, 07.2), size = 1.5, color = "red", linetype = "dashed") +
+  geom_vline(data = group_means, aes(xintercept = mean_perimeter, color ='red'),
+             #           linetype = "dashed", size = 1.5) +  # Vertical lines at means
+             labs(
+               x = expression(paste("Perimeter3D (cm) [", theta, "]")),
+               y = "Density (r)",
+               fill = "Group"
+             ) +
+               # Dynamic x-axis limits based on perimeter3D data
+               #xlim(x_limits) +
+               theme(
+                 text = element_text(size = 14),
+                 plot.title = element_text(size = 24, face = "bold"),
+                 axis.text.x = element_text(size = 24),
+                 axis.title.x = element_text(size = 24),
+                 axis.title.y = element_text(size = 24),
+                 plot.title.position = "plot"
+               )
+             
+# Summary of the model
+summary(model)
+posthoc <- glht(model, linfct = mcp(group  = "Tukey"))
+summary(posthoc)
+# Extract the effects for the fixed effect "group"
+group_effects_lob <- allEffects(model)$group  # Extract the effect for "group"
+
+# Convert the extracted effect to a data frame
+group_effects_lob <- as.data.frame(group_effects_lob)
+
+# Add "_Fitted" to group names
+group_effects_lob <- group_effects_lob %>%
+mutate(
+group = paste0(group, "_Fitted"),  # Add "_Fitted" to group names
+model = "Fitted"  # Indicate these are fitted values
+)
+
+# Combine the original data with fitted data
+combined_data_lob <- bind_rows(
+Lob_Perimeters_andCenters %>%
+mutate(group = as.character(group)),  # Original data
+group_effects_lob %>%
+rename(perimeter3D = fit) %>%
+mutate(model = "Fitted")  # Fitted data
+)
+# Define the correct order for the groups in Dipsastrea
+group_order_lob <- c("Single", "Division", "Multi Division", 
+              "Single_Fitted", "Division_Fitted", "Multi Division_Fitted")
+
+# Set `group` as a factor with the specified levels
+combined_data_lob$group <- factor(combined_data_lob$group, levels = group_order_lob)
+
+# Create the plot 
+ggplot() +
+# Plot "Single" group data
+geom_boxplot(data = filter(combined_data_lob, model != "Fitted", group == "Single"),
+        aes(x = group, y = perimeter3D, fill = model), alpha = 0.5) +
+#geom_jitter(data = filter(combined_data_lob, model != "Fitted", group == "Single"),
+#aes(x = group, y = perimeter3D, color = model),
+#size = 2, alpha = 0.05, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8)) +
+geom_errorbar(data = filter(combined_data_lob, model == "Fitted", group == "Single_Fitted"),
+         aes(x = "Single_Fitted", ymin = lower, ymax = upper),
+         color = "black", width = 0.2, size = 0.8) +
+geom_point(data = filter(combined_data_lob, model == "Fitted", group == "Single_Fitted"),
+      aes(x = "Single_Fitted", y = perimeter3D),
+      color = "black", size = 3, shape = 18, alpha = 0.8) +
+geom_text(data = filter(combined_data_lob, model == "Fitted", group == "Single_Fitted"),
+     aes(x = "Single_Fitted", y = perimeter3D, label = round(perimeter3D, 3)),
+     vjust = -1.5, size = 5, color = "black") +
+
+# Plot "Division" group data
+geom_boxplot(data = filter(combined_data_lob, model != "Fitted", group == "Division"),
+        aes(x = group, y = perimeter3D, fill = model), alpha = 0.5) +
+#geom_jitter(data = filter(combined_data_lob, model != "Fitted", group == "Division"),
+##            aes(x = group, y = perimeter3D, color = model),
+#           size = 2, alpha = 0.05, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8)) +
+geom_errorbar(data = filter(combined_data_lob, model == "Fitted", group == "Division_Fitted"),
+         aes(x = "Division_Fitted", ymin = lower, ymax = upper),
+         color = "black", width = 0.2, size = 0.8) +
+geom_point(data = filter(combined_data_lob, model == "Fitted", group == "Division_Fitted"),
+      aes(x = "Division_Fitted", y = perimeter3D),
+      color = "black", size = 3, shape = 18, alpha = 0.8) +
+geom_text(data = filter(combined_data_lob, model == "Fitted", group == "Division_Fitted"),
+     aes(x = "Division_Fitted", y = perimeter3D, label = round(perimeter3D, 3)),
+     vjust = -1.5, size = 5, color = "black") +
+
+# Plot "Late Division" group data
+geom_boxplot(data = filter(combined_data_lob, model != "Fitted", group == "Multi Division"),
+        aes(x = group, y = perimeter3D, fill = model), alpha = 0.5) +
+#geom_jitter(data = filter(combined_data_lob, model != "Fitted", group == "Multi Division"),
+#           aes(x = group, y = perimeter3D, color = model),
+#          size = 2, alpha = 0.05, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8)) +
+geom_errorbar(data = filter(combined_data_lob, model == "Fitted", group == "Multi Division_Fitted"),
+         aes(x = "Late Division_Fitted", ymin = lower, ymax = upper),
+         color = "black", width = 0.2, size = 0.8) +
+geom_point(data = filter(combined_data_lob, model == "Fitted", group == "Multi Division_Fitted"),
+      aes(x = "Late Division_Fitted", y = perimeter3D),
+      color = "black", size = 3, shape = 18, alpha = 0.8) +
+geom_text(data = filter(combined_data_lob, model == "Fitted", group == "Multi Division_Fitted"),
+     aes(x = "Late Division_Fitted", y = perimeter3D, label = round(perimeter3D, 3)),
+     vjust = -1.5, size = 5, color = "black") +
+
+# Add labels and theme
+labs(
+title = "Perimeter3D by Group with Fitted Values and Confidence Intervals",
+x = "Group",
+y = "Perimeter3D_cm",
+color = "Model",
+fill = "Model"
+) +
+theme_minimal(base_size = 18) +  # Increase font size for all text
+theme(
+axis.text.x = element_text(angle = 45, hjust = 1, size = 18),  # Increase font size for x-axis labels
+axis.text.y = element_text(size = 18),  # Increase font size for y-axis labels
+axis.title.x = element_text(size = 18),  # Increase font size for x-axis title
+axis.title.y = element_text(size = 22)  # Bold and larger title
+)
+
+
+
+
+model_lob <- lmer(perimeter3D ~ group + (1 | model), data = Lob_Perimeters_andCenters)
+
+model_dipsastrea <- lmer(perimeter3D ~ group + (1 | model), data = Dips_Perimeters_andCenters)
+
+# Summary of the model
+summary(model_dipsastrea)
+posthoc <- glht(model_dipsastrea, linfct = mcp(group  = "Tukey"))
+summary(posthoc)
+posthoc <- glht(model_lob, linfct = mcp(group  = "Tukey"))
+
+library(effects)
+
+# Extract the effects for the fixed effect "group"
+group_effects_dips <- allEffects(model_dipsastrea)$group  # Extract the effect for "group"
+
+# Convert the extracted effect to a data frame
+group_effects_dips <- as.data.frame(group_effects_dips)
+
+# Add "_Fitted" to group names
+group_effects_dips <- group_effects_dips %>%
+mutate(
+group = paste0(group, "_Fitted"),  # Add "_Fitted" to group names
+model = "Fitted"  # Indicate these are fitted values
+)
+
+# Combine the original data with fitted data
+combined_data_dips <- bind_rows(
+Dips_Perimeters_andCenters %>%
+mutate(group = as.character(group)),  # Original data
+group_effects_dips %>%
+rename(perimeter3D = fit) %>%
+mutate(model = "Fitted")  # Fitted data
+)
+# Define the correct order for the groups in Dipsastrea
+group_order_dips <- c("Single", "Division", "Late Division", 
+               "Single_Fitted", "Division_Fitted", "Late Division_Fitted")
+
+# Set `group` as a factor with the specified levels
+combined_data_dips$group <- factor(combined_data_dips$group, levels = group_order_dips)
+
+# Create the plot for Dipsastrea
+ggplot() +
+# Plot "Single" group data
+geom_boxplot(data = filter(combined_data_dips, model != "Fitted", group == "Single"),
+        aes(x = group, y = perimeter3D, fill = model), alpha = 0.5) +
+#geom_jitter(data = filter(combined_data_dips, model != "Fitted", group == "Single"),
+#            aes(x = group, y = perimeter3D, color = model),
+#            size = 2, alpha = 0.05, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8)) +
+geom_errorbar(data = filter(combined_data_dips, model == "Fitted", group == "Single_Fitted"),
+         aes(x = "Single_Fitted", ymin = lower, ymax = upper),
+         color = "black", width = 0.2, size = 0.8) +
+geom_point(data = filter(combined_data_dips, model == "Fitted", group == "Single_Fitted"),
+      aes(x = "Single_Fitted", y = perimeter3D),
+      color = "black", size = 3, shape = 18, alpha = 0.8) +
+geom_text(data = filter(combined_data_dips, model == "Fitted", group == "Single_Fitted"),
+     aes(x = "Single_Fitted", y = perimeter3D, label = round(perimeter3D, 3)),
+     vjust = -1.5, size = 5, color = "black") +
+
+# Plot "Division" group data
+geom_boxplot(data = filter(combined_data_dips, model != "Fitted", group == "Division"),
+        aes(x = group, y = perimeter3D, fill = model), alpha = 0.5) +
+#geom_jitter(data = filter(combined_data_dips, model != "Fitted", group == "Division"),
+#           aes(x = group, y = perimeter3D, color = model),
+#           size = 2, alpha = 0.05, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8)) +
+geom_errorbar(data = filter(combined_data_dips, model == "Fitted", group == "Division_Fitted"),
+         aes(x = "Division_Fitted", ymin = lower, ymax = upper),
+         color = "black", width = 0.2, size = 0.8) +
+geom_point(data = filter(combined_data_dips, model == "Fitted", group == "Division_Fitted"),
+      aes(x = "Division_Fitted", y = perimeter3D),
+      color = "black", size = 3, shape = 18, alpha = 0.8) +
+geom_text(data = filter(combined_data_dips, model == "Fitted", group == "Division_Fitted"),
+     aes(x = "Division_Fitted", y = perimeter3D, label = round(perimeter3D, 3)),
+     vjust = -1.5, size = 5, color = "black") +
+
+# Plot "Late Division" group data
+geom_boxplot(data = filter(combined_data_dips, model != "Fitted", group == "Late Division"),
+        aes(x = group, y = perimeter3D, fill = model), alpha = 0.5) +
+#geom_jitter(data = filter(combined_data_dips, model != "Fitted", group == "Late Division"),
+#           aes(x = group, y = perimeter3D, color = model),
+#          size = 2, alpha = 0.05, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8)) +
+geom_errorbar(data = filter(combined_data_dips, model == "Fitted", group == "Late Division_Fitted"),
+         aes(x = "Late Division_Fitted", ymin = lower, ymax = upper),
+         color = "black", width = 0.2, size = 0.8) +
+geom_point(data = filter(combined_data_dips, model == "Fitted", group == "Late Division_Fitted"),
+      aes(x = "Late Division_Fitted", y = perimeter3D),
+      color = "black", size = 3, shape = 18, alpha = 0.8) +
+geom_text(data = filter(combined_data_dips, model == "Fitted", group == "Late Division_Fitted"),
+     aes(x = "Late Division_Fitted", y = perimeter3D, label = round(perimeter3D, 3)),
+     vjust = -1.5, size = 5, color = "black") +
+
+# Add labels and theme
+labs(
+title = "Perimeter3D by Group with Fitted Values and Confidence Intervals",
+x = "Group",
+y = "Perimeter3D_cm",
+color = "Model",
+fill = "Model"
+) +
+theme_minimal(base_size = 18) +  # Increase font size for all text
+theme(
+axis.text.x = element_text(angle = 45, hjust = 1, size = 18),  # Increase font size for x-axis labels
+axis.text.y = element_text(size = 18),  # Increase font size for y-axis labels
+axis.title.x = element_text(size = 18),  # Increase font size for x-axis title
+axis.title.y = element_text(size = 22)  # Bold and larger title
+)
+
+
+
+###FIG 2: 
+# Calculate proportions and total counts per model
+data_model_proportions <-Lob_Perimeters_andCenters %>%
+  group_by(model) %>%
+  mutate(total_count = n()) %>%
+  group_by(model, group) %>%
+  summarise(
+    count = n(),
+    proportion = count / first(total_count),
+    total_count = first(total_count),
+    .groups = "drop"
+  )
+#data_model_proportionsLob = data_model_proportions
+# Ensure unique models when ordering by total_count
+data_model_proportions <- data_model_proportions %>%
+  arrange(-total_count, model)  # Sort by total_count in descending order
+# Reorder the 'model' factor based on sorted total_count
+data_model_proportions$model <- factor(data_model_proportions$model, 
+                                       levels = unique(data_model_proportions$model))
+# 
+# Create the stacked barplot with proportions of groups within each model
+ggplot(data_model_proportions, aes(x = model, y = proportion, fill = group)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(
+    aes(label = scales::percent(proportion, accuracy = 0.1)), 
+    position = position_stack(vjust = 0.5), size = 3
+  ) +  # Add labels within the bars
+  geom_text(
+    aes(x = model, y = 1.05, label = paste0("n = ", total_count)), 
+    inherit.aes = FALSE, size = 4, vjust = 0  # Position above the bars
+  ) +  # Add total counts on top
+  labs(
+    title = "Proportion of Groups Within Each Model",
+    x = "Model",
+    y = "Proportion",
+    fill = "Group"
+  ) +
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(mult = c(0, 0.2))) +  # Adjust y-axis for labels
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 12, face = "bold")  # Enhance facet labels
+  )
+
+
+# Calculate proportions and total counts per model
+data_model_proportions <- Dips_Perimeters_andCenters %>%
+  group_by(model) %>%
+  mutate(total_count = n()) %>%
+  group_by(model, group) %>%
+  summarise(
+    count = n(),
+    proportion = count / first(total_count),
+    total_count = first(total_count),
+    .groups = "drop"
+  )
+library(stringr)
+
+data_model_proportions <- data_model_proportions %>%
+  mutate(model = str_remove(model, "Lob"))
+data_model_proportions <- data_model_proportions %>%
+  mutate(model = str_remove(model, "Dips"))
+
+# Create the stacked barplot with proportions of groups within each model
+ggplot(data_model_proportions, aes(x = reorder(model, total_count), y = proportion, fill = group)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(vjust = "inward",
+            aes(label = scales::percent(proportion, accuracy = 0.1)), 
+            position = position_stack(vjust = 0.5), size = 4
+  ) +  # Add labels within the bars
+  geom_text(
+    aes(x = model, y = 1.05, label = paste0("n = ", total_count)), 
+    inherit.aes = FALSE, size = 4,  vjust = 0  # Position above the bars
+  ) +  # Add total counts on top
+  labs(
+    title = "Proportion of Groups Within Each Model",
+    x = "Model",
+    y = "Proportion",
+    fill = "Group"
+  ) +
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(mult = c(0, 0.2))) +  # Adjust y-axis for labels
+  theme_minimal() +
+  theme( legend.position = "bottom",
+         axis.text.x = element_text(size = 12, angle = 10),
+         strip.text = element_text(size = 12, face = "bold")  # Enhance facet labels
+  )
+
+
+
+
+
+
+
+##Fig 3 B:
+
+
+# Calculate sample size (n) for each group
+group_counts <- Dips_Perimeters_andCenters %>%
+  group_by(group) %>%
+  summarise(n = n())
+
+# Create the violin plot with boxplot overlay
+ggviolin(
+  Dips_Perimeters_andCenters,
+  x = "group",
+  y = "perimeter3D",
+  fill = "gray90",                # Gray fill for the violins
+  color = "black",                # Black outline for the violins
+  add = "boxplot",
+  add.params = list(fill = "white")  # Boxplot style
+) +
+  # Add sample size annotations
+  geom_text(
+    data = group_counts,
+    aes(x = group, y = max(Dips_Perimeters_andCenters$perimeter3D) + 1, label = paste0("n = ", n)),
+    inherit.aes = FALSE,
+    size = 5,
+    color = "black",  # Black text for annotations
+    hjust = 0.5
+  ) +
+  labs(
+    title = "Perimeter3D by Group",
+    x = "Group",
+    y = "Perimeter3D (cm)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",             # Remove legend
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),  # Black x-axis labels
+    axis.text.y = element_text(color = "black"),                         # Black y-axis labels
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "black")  # Black title
+  )
+
+
+
+# Calculate sample size (n) for each group
+group_counts <- Lob_Perimeters_andCenters %>%
+  group_by(group) %>%
+  summarise(n = n())
+
+# Create the violin plot with boxplot overlay
+ggviolin(
+  Lob_Perimeters_andCenters,
+  x = "group",
+  y = "perimeter3D",
+  fill = "gray90",                # Gray fill for the violins
+  color = "black",                # Black outline for the violins
+  add = "boxplot",
+  add.params = list(fill = "white")  # Boxplot style
+) +
+  # Add sample size annotations
+  geom_text(
+    data = group_counts,
+    aes(x = group, y = max(Lob_Perimeters_andCenters$perimeter3D) + 1, label = paste0("n = ", n)),
+    inherit.aes = FALSE,
+    size = 5,
+    color = "black",  # Black text for annotations
+    hjust = 0.5
+  ) +
+  labs(
+    title = "Perimeter3D by Group",
+    x = "Group",
+    y = "Perimeter3D (cm)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",             # Remove legend
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),  # Black x-axis labels
+    axis.text.y = element_text(color = "black"),                         # Black y-axis labels
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "black")  # Black title
+  )
+
+
+
+##FIG4: 
+
+
+
+# Load necessary libraries
+library(readr)
+library(dplyr)
+library(lme4)
+library(glmer)
+install.packages("broom")
+install.packages("multcompView")
+install.packages("broom.mixed")
+install.packages("multcompView")
+library("broom")
+library(tidyr)
+library(brms)
+# Load the necessary libraries
+library(effects)
+library(ggplot2)
+library(stringr)
+# Load required library
+library(tidyverse)
+# Define the directory path
+directory_path <- "D:/Lob_Shapes_data/Processed"
+# List all CSV files in the directory
+csv_files <- list.files(path = directory_path, pattern = "\\.csv$", full.names = TRUE)
+# Read and combine all CSV files into one data frame with 'Model' column (first part before "_")
+CurvatureDataLob <- csv_files %>%
+  lapply(function(file) {
+    read_csv(file) %>%
+      mutate(model = sub("_.*", "", tools::file_path_sans_ext(basename(file))))  # Extract first part before "_"
+  }) %>%
+  bind_rows()
+
+unique(melted_data$model)
+CurvatureDataLob <- CurvatureDataLob %>%
+  filter(!model %in% c("LobNR1_2", "LobPrincess2_1", "LobPrincess2_2","Satil1"))
+
+# View the updated Model column
+print(unique(CurvatureDataLob$model))
+CurvatureDataLob <- CurvatureDataLob %>%
+  mutate(group = case_when(
+    group %in% c("Early Division", "Mid Division", "Late Division") ~ "Division",
+    TRUE ~ group  # Keep other groups unchanged
+  ))
+print(unique(CurvatureDataLob$group))# Step 2: Melt columns starting with 'box_' into a long format
+melted_df <- CurvatureDataLob %>%
+  pivot_longer(
+    cols = starts_with("box_"),  # Select all columns starting with 'box_'
+    names_to = "step_size",       # New column for step size
+    values_to = "structural_complexity"  # Values for structural complexity
+  )
+melted_df <- melted_df %>%
+  mutate(step_size = as.numeric(str_remove(step_size, "box_")))
+# View the melted data
+print(melted_df)
+
+melted_df$group_division <- ifelse(melted_df$group == "Division", 1, 0)
+melted_df$group_multi_division <- ifelse(melted_df$group == "Multi Division", 1, 0)
+melted_df$group_single <- ifelse(melted_df$group == "Single", 1, 0)
+melted_df$group_multi_division <- as.factor(melted_df$group_multi_division)
+melted_df$group_division <- as.factor(melted_df$group_division)
+melted_df$group_single <-as.factor(melted_df$group_single)
+unique_groups <- c("Single","Division", "Multi Division")
+#melted_df$group <- relevel(melted_df$group, ref = "Single")
+melted_df$group <- factor(
+  melted_df$group,
+  levels = c("Single", "Division", "Multi Division")
+)
+
+melted_df <- melted_df %>%
+  mutate(
+    structural_complexity_z = (structural_complexity - mean(structural_complexity, na.rm = TRUE)) / sd(structural_complexity, na.rm = TRUE)
+  )
+
+melted_df <- melted_df %>%
+  mutate(
+    step_size = as.numeric(step_size ),
+    step_size_z = (step_size - mean(step_size, na.rm = TRUE)) / sd(step_size, na.rm = TRUE)
+  )
+melted_df$model <- as.factor(melted_df$model)
+
+# Define the transitions
+transitions <- list(
+  c("Single", "Division"),
+  c("Division", "Multi Division"),
+  c("Division", "Single"),
+  c("Multi Division", "Single")
+) 
+eee2 <- data.frame()
+# Initialize a results data frame
+model_results <- data.frame(
+  Transition = character(),
+  Estimate = numeric(),
+  StdError = numeric(),
+  Variance_Model = numeric(),
+  Variance_StepSize = numeric(),
+  P_Value = numeric(),
+  Singular = logical(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through transitions
+for (transition in transitions) {
+  from_group <- transition[1]
+  to_group <- transition[2]
+  
+  # Subset data for the transition
+  subset_df <- melted_df[melted_df$group %in% c(from_group, to_group), ]
+  # Iterate over unique models in subset_df
+  unique_models <- unique(subset_df$model)
+  
+  for (model in unique_models) {
+    # Check if the model contains data for both groups
+    model_data <- subset_df[subset_df$model == model, ]
+    if (!(from_group %in% model_data$group) || !(to_group %in% model_data$group)) {
+      # Remove the model if it does not contain data for one or both groups
+      subset_df <- subset_df[subset_df$model != model, ]
+    }
+  }
+  # Fit the model
+  model <- glmer(
+    paste0("group_", tolower(gsub(" ", "_", to_group)), " ~ structural_complexity_z * step_size_z  + (1 | model)"),
+    data = subset_df,
+    family = binomial
+  )
+  print(from_group )
+  print(to_group )
+  print(summary(model))
+  #print(report(model))
+  # Check for singular fit
+  singular <- isSingular(model)
+  
+  # Extract model summary
+  summary_model <- summary(model)
+  varcorr <- as.data.frame(VarCorr(model))
+  eee <- as.data.frame(Effect(c("structural_complexity_z", "step_size_z"), mod = model, xlevels = 17))
+  #eee <- as.data.frame(Effect(c("structural_complexity_z"), mod = model, xlevels = 100))
+  eee$Transition <- paste(tolower(gsub(" ", "", from_group)), "to", tolower(gsub(" ", "", to_group)))
+  eee2 <- rbind(eee2, eee)
+  # Collect results
+  model_results <- rbind(
+    model_results,
+    data.frame(
+      Transition = paste(from_group, "to", to_group),
+      Estimate = summary_model$coefficients["structural_complexity_z", "Estimate"],
+      StdError = summary_model$coefficients["structural_complexity_z", "Std. Error"],
+      Variance_Model = ifelse("model" %in% varcorr$grp, varcorr[varcorr$grp == "model", "vcov"], NA),
+      Variance_StepSize = ifelse("step_size_z" %in% varcorr$grp, varcorr[varcorr$grp == "step_size_z", "vcov"], NA),
+      P_Value = summary_model$coefficients["structural_complexity_z", "Pr(>|z|)"],
+      Singular = singular
+    )
+  )
+}
+
+# View results
+# Update the Transition variable in eee2 to follow this order
+transition_order <- c(
+  "single to division",
+  "division to multidivision",
+  "division to single",
+  "multidivision to single"
+)
+# Update the Transition variable in eee2 to follow this order
+eee2$Transition <- factor(eee2$Transition, levels = transition_order)
+eee2$step_size_z = factor(eee2$step_size_z)
+print(model_results)
+ggplot(eee2, aes(x = structural_complexity_z, y = fit, color = Transition)) +
+  #geom_point()+
+  geom_smooth(size = 1) +
+  labs(
+    title = "Effect of Structural Complexity on Transitions",
+    x = "Z-Structural Complexity",
+    y = "Probability of Transition",
+    color = "Transition",
+    fill = "Transition"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    legend.position = "bottom",
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(size = 14),
+    legend.text = element_text(size = 10)
+  )
+unique_transitions <- unique(eee2$Transition)
+
+
+#Dipsastrea: 
+directory_path <- "D:/Dips_Shapes_data/Processed"
+# List all CSV files in the directory
+csv_files <- list.files(path = directory_path, pattern = "\\.csv$", full.names = TRUE)
+# Read and combine all CSV files into one data frame with 'Model' column (first part before "_")
+CurvatureDataDips <- csv_files %>%
+  lapply(function(file) {
+    read_csv(file) %>%
+      mutate(model = sub("_.*", "", tools::file_path_sans_ext(basename(file))))  # Extract first part before "_"
+  }) %>%
+  bind_rows()
+
+# Define the transitions
+transitions <- list(
+  c("Single", "Division"),
+  c("Division", "Late Division"),
+  c("Late Division", "Single")
+) 
+
+CurvatureDataDips <- CurvatureDataDips %>%
+  mutate(group = ifelse(group %in% c("Early Division", "Mid Division"), "Division", group))
+CurvatureDataDips <- CurvatureDataDips %>%
+  filter(group != "Multi Division")
+
+
+CurvatureDataDips$group <- factor(
+  CurvatureDataDips$group,
+  levels = c("Single", "Division", "Late Division")
+)
+
+melted_df <- CurvatureDataDips %>%
+  pivot_longer(
+    cols = starts_with("box_"),  # Select all columns starting with 'box_'
+    names_to = "step_size",       # New column for step size
+    values_to = "structural_complexity"  # Values for structural complexity
+  )
+melted_df <- melted_df %>%
+  mutate(step_size = as.numeric(str_remove(step_size, "box_")))
+# View the melted data
+
+melted_df$group_division <- ifelse(melted_df$group == "Division", 1, 0)
+melted_df$group_late_division <- ifelse(melted_df$group == "Late Division", 1, 0)
+melted_df$group_single <- ifelse(melted_df$group == "Single", 1, 0)
+melted_df$group_late_division <- as.factor(melted_df$group_late_division)
+melted_df$group_division <- as.factor(melted_df$group_division)
+melted_df$group_single <- as.factor(melted_df$group_single)
+unique_groups <- c("Single","Division", "Late Division")
+melted_df$group <- relevel(melted_df$group, ref = "Single")
+
+melted_df <- melted_df %>%
+  mutate(
+    structural_complexity_z = (structural_complexity - mean(structural_complexity, na.rm = TRUE)) / sd(structural_complexity, na.rm = TRUE)
+  )
+
+melted_df <- melted_df %>%
+  mutate(
+    step_size = as.numeric(step_size ),
+    step_size_z = (step_size - mean(step_size, na.rm = TRUE)) / sd(step_size, na.rm = TRUE)
+  )
+
+
+# Define the transitions
+transitions <- list(
+  c("Single", "Division"),
+  c("Division", "Late Division"),
+  c("Late Division", "Single")
+) 
+eee2 <- data.frame()
+# Initialize a results data frame
+model_results <- data.frame(
+  Transition = character(),
+  Estimate = numeric(),
+  StdError = numeric(),
+  Variance_Model = numeric(),
+  Variance_StepSize = numeric(),
+  P_Value = numeric(),
+  Singular = logical(),
+  stringsAsFactors = FALSE
+)
+
+
+# Loop through transitions
+for (transition in transitions) {
+  from_group <- transition[1]
+  to_group <- transition[2]
+  
+  # Subset data for the transition
+  subset_df <- melted_df[melted_df$group %in% c(from_group, to_group), ]
+  # Iterate over unique models in subset_df
+  unique_models <- unique(subset_df$model)
+  
+  for (model in unique_models) {
+    # Check if the model contains data for both groups
+    model_data <- subset_df[subset_df$model == model, ]
+    if (!(from_group %in% model_data$group) || !(to_group %in% model_data$group)) {
+      # Remove the model if it does not contain data for one or both groups
+      subset_df <- subset_df[subset_df$model != model, ]
+    }
+  }
+  # Fit the model
+  model <- glmer(
+    paste0("group_", tolower(gsub(" ", "_", to_group)), " ~ structural_complexity_z * step_size_z  + (1 | model)"),
+    data = subset_df,
+    family = binomial
+  )
+  print(from_group )
+  print(to_group )
+  
+  print(summary(model))#(report(model))
+  # Check for singular fit
+  singular <- isSingular(model)
+  
+  # Extract model summary
+  summary_model <- summary(model)
+  varcorr <- as.data.frame(VarCorr(model))
+  eee <- as.data.frame(Effect(c("structural_complexity_z", "step_size_z"), mod = model, xlevels = 17))
+  #eee <- as.data.frame(Effect(c("structural_complexity_z"), mod = model, xlevels = 100))
+  eee$Transition <- paste(tolower(gsub(" ", "", from_group)), "to", tolower(gsub(" ", "", to_group)))
+  eee2 <- rbind(eee2, eee)
+  # Collect results
+  model_results <- rbind(
+    model_results,
+    data.frame(
+      Transition = paste(from_group, "to", to_group),
+      Estimate = summary_model$coefficients["structural_complexity_z", "Estimate"],
+      StdError = summary_model$coefficients["structural_complexity_z", "Std. Error"],
+      Variance_Model = ifelse("model" %in% varcorr$grp, varcorr[varcorr$grp == "model", "vcov"], NA),
+      Variance_StepSize = ifelse("step_size_z" %in% varcorr$grp, varcorr[varcorr$grp == "step_size_z", "vcov"], NA),
+      P_Value = summary_model$coefficients["structural_complexity_z", "Pr(>|z|)"],
+      Singular = singular
+    )
+  )
+}
+model_results
+
+
+
+
+# Create the boxplot with facets in a single row
+ggplot(melted_df, aes(x = group, y = structural_complexity_z, fill = group)) +
+  geom_boxplot( alpha = 0.7) +
+  # Add sample size labels with rotated text
+  geom_text(
+    data = group_counts,
+    aes(x = group, label = paste0("n=", n), y = max(melted_df$structural_complexity_z) + 0.5, angle = 90),
+    inherit.aes = FALSE,
+    size = 3,
+    color = "black",
+    hjust = 1
+  ) +
+  facet_wrap(~ model, nrow = 1, scales = "free_x", strip.position = "bottom") +  # All in one row
+  labs(
+    title = "Distribution of Structural Complexity (Z-Score) by Group and Model",
+    x = "Group",
+    y = "Structural Complexity (Z-Score)"
+  )  +  # Custom colors for groups
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",  # Remove legend as groups are on the x-axis
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+    axis.text.y = element_text(color = "black"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(size = 10)  # Adjust facet label size
+  )
+
+
+
+
+# Calculate sample size (n) for each group
+group_counts <- melted_df %>%
+  group_by(group) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(group_label = paste0(group, " (n=", n/length(unique(melted_df$step_size)), ")"))  # Create group label with n
+
+# Merge group labels back into the original data
+melted_df <- melted_df %>%
+  left_join(group_counts, by = "group")  # Add group_label to melted_df
+
+# Set the group order for plotting
+melted_df$group <- factor(melted_df$group, levels = c("Single", "Division","Multi Division", "Late Division"))
+melted_df$group_label <- factor(melted_df$group_label, levels = group_counts$group_label)  # Preserve order in legend
+
+
+
+# Create the plot
+ggplot(melted_df, aes(x = as.factor(step_size_z), y = structural_complexity_z, fill = group)) +
+  geom_boxplot(alpha = 0.7, position = position_dodge(width = 0.8)) +
+  labs(
+    title = "Structural Complexity (Z-Score) by Step Size and Group",
+    x = "Step Size (Z-Score)",
+    y = "Structural Complexity (Z-Score)",
+    fill = "Group (Sample Size)"
+  ) +  # Custom colors for groups
+  scale_x_discrete(
+    labels = function(x) sprintf("%.2f", as.numeric(as.character(x)))  # Format x-axis labels to 2 decimals
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",  # Place the legend at the bottom
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    axis.text.y = element_text(color = "black"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+slopes <- model_results[,c(1,2)]
+slopes$Transition <- factor(
+  slopes$Transition,
+  levels = c(
+    "Single to Division",  
+    "Division to Late Division",
+    "Late Division to Single")),
+"Division to Single"
+  )
+)
+ggplot(slopes, aes(x = Transition, y = Estimate, fill = Estimate)) +
+  geom_bar(stat = "identity", color = "black", width = 0.7) +
+  scale_fill_gradient2(
+    low = "blue", mid = "white", high = "red", midpoint = 0,
+    name = "Slope Value"
+  ) +
+  labs(
+    title = "Bar Plot of estimates by Group",
+    x = "Group Transition",
+    y = "Estimate"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12, angle = 30, hjust = 1),
+    axis.text.y = element_text(size = 12),
+    legend.position = "right",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  ) 
+
+
+
+
+# Perform a left join on 'model' in melted_df and 'ModelName' in data
+melted_df<- melted_df %>%
+  left_join(data, by = c("model" = "ModelName"))
+
+melted_df <- melted_df %>%
+  group_by(group) %>%  # Group by the transition type (e.g., Single, Division)
+  mutate(TotalZooids_z = scale(TotalZooids)) %>%  # Apply Z-score normalization
+  ungroup()
+
+
+
+
+# Initialize result data frames
+eee2 <- data.frame()
+model_results <- data.frame(
+  Transition = character(),
+  Estimate = numeric(),
+  StdError = numeric(),
+  Variance_Model = numeric(),
+  P_Value = numeric(),
+  Singular = logical(),
+  stringsAsFactors = FALSE
+)
+# Loop through transitions
+for (transition in transitions) {
+  from_group <- transition[1]
+  to_group <- transition[2]
+  
+  # Subset data for the transition
+  subset_df <- melted_df[melted_df$group %in% c(from_group, to_group), ]
+  
+  # Iterate over unique models in subset_df
+  unique_models <- unique(subset_df$model)
+  
+  for (model in unique_models) {
+    # Check if the model contains data for both groups
+    model_data <- subset_df[subset_df$model == model, ]
+    if (!(from_group %in% model_data$group) || !(to_group %in% model_data$group)) {
+      subset_df <- subset_df[subset_df$model != model, ]
+    }
+  }
+  
+  # Fit the updated model (GLM with TotalZooids_z)
+  model <- glm(
+    paste0("group_", tolower(gsub(" ", "_", to_group)), 
+           " ~ structural_complexity_z + TotalZooids_z"),
+    data = subset_df,
+    family = binomial
+  )
+  
+  print(from_group)
+  print(to_group)
+  print(summary(model))
+  
+  # Extract model summary
+  summary_model <- summary(model)
+  
+  # Extract effect of predictors
+  eee <- as.data.frame(Effect(c("structural_complexity_z", "TotalZooids_z"), mod = model, xlevels = 5))
+  eee$Transition <- paste(tolower(gsub(" ", "", from_group)), "to", tolower(gsub(" ", "", to_group)))
+  eee2 <- rbind(eee2, eee)
+  
+  # Collect results
+  model_results <- rbind(
+    model_results,
+    data.frame(
+      Transition = paste(from_group, "to", to_group),
+      Estimate = summary_model$coefficients["structural_complexity_z", "Estimate"],
+      StdError = summary_model$coefficients["structural_complexity_z", "Std. Error"],
+      Variance_Model = NA,
+      P_Value = summary_model$coefficients["structural_complexity_z", "Pr(>|z|)"],
+      Singular = FALSE
+    )
+  )
+}
+
+
+
+
+
+###FIG 5:
+
+pacman::p_load(pacman, nnspat, scatterplot3d, dbscan, corrplot) 
+
+
+df <- read.csv("D:/allPrimeters_andCenters_lob_fewGroups.csv")
+df$group <- factor(df$group, levels = c("Single", "Division", "Multi Division"))
+
+# Define the kNNCT function
+knnct <- function(lab, knn.ind) {
+  flab <- as.factor(lab)
+  clnames <- levels(flab)
+  c <- length(clnames)
+  ct <- matrix(0, c, c)
+  rownames(ct) <- colnames(ct) <- clnames
+  nlab <- as.numeric(flab)
+  n <- nrow(knn.ind)
+  if (n <= 1) {
+    return(ct)
+  }
+  for (i in 1:n) {
+    ind <- knn.ind[i, ]
+    for (j in 1:c) {
+      jnn.cnt <- sum(nlab[ind] == j)
+      ct[nlab[i], j] <- ct[nlab[i], j] + jnn.cnt
+    }
+  }
+  ct
+}
+
+# Initialize the results dataframe
+all_models_df <- data.frame(From = character(), To = character(), P_Value = numeric(),
+                            Side = character(), K = integer(), model = character())
+
+# Loop through unique models
+df <- df[!df$model %in% c("LobIUI1", "LobNR1_2", "LobPrincess2_1", "LobPrincess2_2", "LobSatil1"), ]
+unique_models <- unique(df$model)
+for (model in unique_models) {
+  # Filter data for the current model
+  df_model <- df[df$model == model, ]
+  df_model$group <- factor(df_model$group, levels = c("Single", "Division", "Multi Division"))
+  
+  # Process center3D
+  center3D <- gsub("\\[\\[|\\]\\]", "", df_model$center3D)
+  coords <- strsplit(center3D, "\\s+")
+  coords <- lapply(coords, function(x) x[x != ""])
+  x <- as.numeric(sapply(coords, "[[", 1))
+  y <- as.numeric(sapply(coords, "[[", 2))
+  z <- as.numeric(sapply(coords, "[[", 3))
+  dat.fr <- data.frame(x = x, y = y, z = z, zooid.type = df_model$group)
+  cl.names <- levels(dat.fr$zooid.type)
+  
+  combined_long_df <- data.frame()
+  
+  for (K in 1:10) {
+    if (nrow(dat.fr) <= K) {
+      cat("Skipping k =", K, "for model =", model, "due to insufficient data.\n")
+      next
+    }
+    
+    knn <- kNN(dat.fr[,-4], k = K)
+    knn.ind <- knn$id
+    lab <- dat.fr$zooid.type
+    kct <- knnct(lab, knn.ind)
+    
+    # Permutation tests
+    Nsim <- 1000
+    kct.mat <- NULL
+    set.seed(111)
+    for (i in 1:Nsim) {
+      re.lab <- sample(lab)
+      re.kct <- knnct(re.lab, knn.ind)
+      kct.mat <- rbind(kct.mat, as.vector(t(re.kct)))
+    }
+    kct.vec <- as.vector(t(kct))
+    ls.comp.mat <- sweep(kct.mat, 2, kct.vec, `<=`)
+    rs.comp.mat <- sweep(kct.mat, 2, kct.vec, `>=`)
+    ls.pval <- colMeans(ls.comp.mat)
+    rs.pval <- colMeans(rs.comp.mat)
+    ls.pval.ct <- matrix(ls.pval, nrow = length(cl.names), byrow = TRUE)
+    rs.pval.ct <- matrix(rs.pval, nrow = length(cl.names), byrow = TRUE)
+    dimnames(ls.pval.ct) <- list(cl.names, cl.names)
+    dimnames(rs.pval.ct) <- list(cl.names, cl.names)
+    
+    rs_long <- as.data.frame(as.table(rs.pval.ct))
+    rs_long$Side <- "Right"
+    rs_long$K <- K
+    
+    ls_long <- as.data.frame(as.table(ls.pval.ct))
+    ls_long$Side <- "Left"
+    ls_long$K <- K
+    
+    k_long_df <- rbind(
+      setNames(rs_long, c("From", "To", "P_Value", "Side", "K")),
+      setNames(ls_long, c("From", "To", "P_Value", "Side", "K"))
+    )
+    
+    combined_long_df <- rbind(combined_long_df, k_long_df)
+  }
+  
+  combined_long_df$model <- model
+  all_models_df <- rbind(all_models_df, combined_long_df)
+}
+
+
+# View results
+print(all_models_df)
+
+
+write.csv(all_models_df, file ="D:/ZooidSEgData/TotalRes_LobKNN_Final_19_1.csv")
+melted_data <- all_models_df %>%
+  filter(!model %in% c("LobNR1_2", "LobPrincess2_1", "LobPrincess2_2"))
+# Assuming you have a data frame called 'melted_data'
+melted_data$From <- factor(melted_data$From, levels = c("Single", "Division", "Multi Division"))
+melted_data$To <- factor(melted_data$To, levels = c("Single", "Division", "Multi Division"))
+
+melted_data$From <- factor(melted_data$From, levels = c("Single", "Division", "Late Division"))
+melted_data$To <- factor(melted_data$To, levels = c("Single", "Division", "Late Division"))
+
+
+
+# Define a custom shape palette with 11 distinct shapes
+custom_shapes <- c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11)
+custom_labeller <- function(variable, value) {
+  if (variable == "Side") {
+    return(paste( value,"Side"))
+  } else if (variable == "From") {
+    return(paste("From \n", value))
+  } else {
+    return(paste("To", value))
+  }
+}
+
+# Create a ggplot with custom shapes, size, alpha, and one legend entry per model
+p <- ggplot(all_models_df, aes(x = K, y = P_Value, color = model, shape = model)) +
+  geom_jitter(size = 1, alpha = 0.9, stroke = 2) +  # Increase the size and set alpha to 0.7
+  facet_grid(Side + From ~ To, labeller = custom_labeller, switch = "y") +
+  labs(x = "K", y = "P-Value") +
+  theme_bw() +
+  theme(text = element_text(size = 18)) +
+  geom_hline(yintercept = 0.1, linetype = "dashed", color = "red") +
+  ggtitle("Left (top) and Right (bottom) sided tests for Dipsastrea") +
+  scale_shape_manual(values = custom_shapes) +  # Apply the custom shape palette
+  guides(shape = guide_legend(override.aes = list(size = 5, alpha = 1)))  # Adjust legend appearance
+
+# Print the customized plot
+print(p)
+
+melted_data = read.csv("D:/ZooidSEgData/TotalRes_DipsKNN_Final_19_1.csv")
+##Lobophyllia: 
+melted_data = read.csv("D:/ZooidSEgData/TotalRes_LobKNN_Final_19_1.csv")
+
+
+# Define custom shapes
+custom_shapes <- c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+
+
+# Prepare data for scatter plot
+scatter_data_right <- melted_data %>%
+  filter(Side == "Right", P_Value <= 0.05) %>%
+  mutate(
+    Transition = paste("", From, "to", To),
+    model = gsub("Lob", "", model)  # Remove the "Lob" prefix from model names
+  ) %>%
+  distinct(Transition, K, model, .keep_all = TRUE)  # Remove duplicates
+ggplot(scatter_data_right, aes(x = Transition, y = K , color = model, shape = model)) +
+  geom_point(size = 2, stroke = 2,  position = position_dodge(width = 0.8)) +  # Align points horizontally
+  labs(
+    title = "Significant (P<0.05) aggregation in Dipsastrea",
+    x = "Transition",
+    y = "K (Nearest Neighbors)",
+    color = "Model",
+    shape = "Model"
+  ) + 
+  scale_shape_manual(values = custom_shapes) +  # Use a distinct color palette
+  scale_y_continuous(
+    breaks = 1:10,  # Set breaks from 1 to 10 (or the range of your data)
+    labels = as.character(1:10)  # Ensure labels appear as "1", "2", ...
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 16),  # Increase text size
+    axis.text.x = element_text(size = 12, angle = 10, vjust = 1),  # Rotate x-axis text for better readability
+    axis.text.y = element_text(size = 12),  # Larger y-axis text
+    axis.title.x = element_text(size = 14, face = "bold"),
+    axis.title.y = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),  # Center and enlarge title
+    # Place legend at the bottom
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold"),
+    panel.grid.major = element_line(color = "gray", linetype = "dashed")  # Add grid lines
+  )
+
+
+# Prepare data for scatter plot
+scatter_data_l <- melted_data %>%
+  filter(Side == "Left", P_Value <= 0.05) %>%
+  mutate(
+    Transition = paste("", From, "to", To),
+    model = gsub("Lob", "", model)  # Remove the "Lob" prefix from model names
+  ) %>%
+  distinct(Transition, K, model, .keep_all = TRUE)  # Remove duplicates
+ggplot(scatter_data_l, aes(x = Transition, y = K , color = model, shape = model)) +
+  geom_point(size = 2, stroke = 2,  position = position_dodge(width = 0.8)) +  # Align points horizontally
+  labs(
+    title = "Significant (P<0.05) segregation in Dipsastrea",
+    x = "Transition",
+    y = "K (Nearest Neighbors)",
+    color = "Model",
+    shape = "Model"
+  ) + 
+  scale_shape_manual(values = custom_shapes) +  # Use a distinct color palette
+  scale_y_continuous(
+    breaks = 1:10,  # Set breaks from 1 to 10 (or the range of your data)
+    labels = as.character(1:10)  # Ensure labels appear as "1", "2", ...
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 16),  # Increase text size
+    axis.text.x = element_text(size = 12, angle = 10, vjust = 1),  # Rotate x-axis text for better readability
+    axis.text.y = element_text(size = 12),  # Larger y-axis text
+    axis.title.x = element_text(size = 14, face = "bold"),
+    axis.title.y = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),  # Center and enlarge title
+    # Place legend at the bottom
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14, face = "bold"),
+    panel.grid.major = element_line(color = "gray", linetype = "dashed")  # Add grid lines
+  )
+
+
+
+
+
+###TESTS FOR COLONY SIZE:
+
+# Create a properly formatted data frame
+data <- data.frame(
+  ModelName = c("LobIgloo1", "LobIgloo2", "LobIgloo3", "LobIgloo4",
+                "LobKza1", "LobNR1", "LobNR2", "LobSatil1",
+                "LobIUI1", "LobPrincess1", "LobPrincess2",
+                "DipsIgloo1", "DipsIgloo2", "DipsKza1",
+                "DipsIUI1", "DipsIUI2"),
+  TotalSA = c(0.042903, 0.099716, 0.088412, 0.044801,
+              0.031191, 0.095872, 0.097332, 0.019663,
+              0.010826, 1.150000, 4.815000, 0.587652,
+              0.129517, 0.031929, 0.008091, 0.063724),
+  type = c("Lob", "Lob", "Lob", "Lob",
+           "Lob", "Lob", "Lob", "Lob",
+           "Lob", "Lob", "Lob", "Dips",
+           "Dips", "Dips", "Dips", "Dips"),
+  TotalZooids = c(27, 55, 27, 28, 12, 72, 65, 9, 5, 959, 2883, 1911, 338, 89, 25, 122),
+  Region = c("IG", "IG", "IG", "IG", "KZ", "NR", "NR", "Satil",
+             "IUI", "PR", "PR", "IG", "IG", "KZ", "IUI", "IUI"),
+  stringsAsFactors = TRUE
+)
+data <- subset(data, Region != "Satil")
+# Print the data frame
+print(data)
+# View the data
+print(data)
+# Subset data for Lob and Dips after removing "Satil"
+lob_data <- subset(data, type == "Lob")
+dips_data <- subset(data, type == "Dips")
+
+# Fit linear models for each type
+lob_model <- lm(log10(TotalSA) ~ log10(TotalZooids), data = lob_data)
+dips_model <- lm(log10(TotalSA) ~ log10(TotalZooids), data = dips_data)
+
+# Extract R-squared for each model
+lob_r2 <- summary(lob_model)$r.squared
+dips_r2 <- summary(dips_model)$r.squared
+
+# Plot with log scale and smooth line
+ggplot(data, aes(x = TotalZooids, y = TotalSA, color = type)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, linetype = "dashed", alpha = 0.5) +
+  scale_x_log10() +  # Log scale for x-axis
+  scale_y_log10() +  # Log scale for y-axis
+  labs(
+    title = "Surface Area vs. Number of Zooids",
+    x = "log(Colony Surface Area m^2)",
+    y = "log(# Zooids)",
+    color = "Type"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.text = element_text(color = "black"),
+    legend.position = "bottom"
+  )
+
+
+library(tidyr)
+library(readr
+)
+
+# Read the specific file into Lob_Perimeters_andCenters
+Lob_Perimeters_andCenters <- read_csv("D:/allPrimeters_andCenters_lob_fewGroups.csv")
+unique_models <- unique(Lob_Perimeters_andCenters$model)
+
+# Get all CSV files from the specified folder
+files <- list.files("D:/Dips_Shapes_data/CSV", pattern = "\\.csv$", full.names = TRUE)
+
+# Combine all files into one dataframe
+Dips_Perimeters_andCenters <- files %>%
+  lapply(read_csv) %>%  # Read each file
+  bind_rows()           # Combine into one dataframe
+unique(Dips_Perimeters_andCenters$group)
+# Display the first few rows of each dataframe
+head(Lob_Perimeters_andCenters)
+head(Dips_Perimeters_andCenters)
+
+
+Lob_Perimeters_andCenters <- 
+  Lob_Perimeters_andCenters %>%
+  filter(!model %in% c("LobNR1_2", "LobPrincess2_1", "LobPrincess2_2","LobSatil1"))
+
+
+Lob_Perimeters_andCenters$group <- factor(
+  Lob_Perimeters_andCenters$group,
+  levels = c("Single", "Division", "Multi Division")
+)
+
+
+Dips_Perimeters_andCenters <- Dips_Perimeters_andCenters %>%
+  mutate(group = ifelse(group %in% c("Early Division", "Mid Division"), "Division", group))
+Dips_Perimeters_andCenters <- Dips_Perimeters_andCenters %>%
+  filter(group != "Multi Division")
+
+
+Dips_Perimeters_andCenters$group <- factor(
+  Dips_Perimeters_andCenters$group,
+  levels = c("Single", "Division", "Late Division")
+)
+
+
+data_model_proportionsDips <-Dips_Perimeters_andCenters %>%
+  group_by(model) %>%
+  mutate(total_count = n()) %>%
+  group_by(model, group) %>%
+  summarise(
+    count = n(),
+    proportion = count / first(total_count),
+    total_count = first(total_count),
+    .groups = "drop"
+  )
+
+
+# Create the wide table with group counts and proportions
+wide_table <- data_model_proportionsDips %>%
+  pivot_wider(
+    names_from = group,
+    values_from = c(count, proportion),
+    values_fill = list(count = 0, proportion = 0)
+  )
+
+# View the wide table
+print(wide_table)
+
+
+group_names <- c("Single", "Division", "Late Division")  # List of groups to test
+
+results <- lapply(group_names, function(group) {
+  observed_col <- paste0("count_", group)
+  observed <- wide_table[[observed_col]]
+  not_observed <- wide_table$total_count - observed
+  
+  # Create the contingency table
+  division_table <- rbind(
+    observed = observed,
+    not_observed = not_observed
+  )
+  
+  # Perform chi-squared test
+  res <- chisq.test(division_table, simulate.p.value = TRUE, B = 10000)
+  
+  list(
+    group = group,
+    p_value = res$p.value,
+    statistic = res$statistic
+  )
+})
+
+# Display results
+results_df <- do.call(rbind, lapply(results, as.data.frame))
+print(results_df)
+
+unique(melted_data$model)
+melted_data <- melted_data %>%
+  filter(!model %in% c("LobNR1_2", "LobPrincess2_1", "LobPrincess2_2"))
+# Assuming you have a data frame called 'melted_data'
+# Filter the data to keep only rows with P_Value <= 0.1
+melted_data$significant <- as.numeric(ifelse(melted_data$P_Value <= 0.05, 1, 0))
+
+by_group_model <- glm(
+  significant ~ TotalSA,
+  data = subset(melted_data, From == "Multi Division"),
+  family = binomial
+)
+summary(by_group_model)
+
+
+
+for (m in models){print( summary (m))}
+# List of models
+models <- list(
+  "Late Division" = glm(
+    significant ~ TotalSA,
+    data = subset(melted_data, From == "Late Division"),
+    family = binomial
+  ),
+  "Single" = glm(
+    significant ~ TotalSA,
+    data = subset(melted_data, From == "Single"),
+    family = binomial
+  ),
+  "Division" = glm(
+    significant ~ TotalSA,
+    data = subset(melted_data, From == "Division"),
+    family = binomial
+  )
+)
+# Collect model summaries into a data frame
+results_table <- data.frame(
+  Group = c("Late Division", "Single", "Division"),
+  Intercept_Estimate = sapply(models, function(m) coef(m)[1]),
+  Intercept_P_Value = sapply(models, function(m) summary(m)$coefficients[1, "Pr(>|z|)"]),
+  TotalSA_Estimate = sapply(models, function(m) coef(m)[2]),
+  TotalSA_P_Value = sapply(models, function(m) summary(m)$coefficients[2, "Pr(>|z|)"]),
+  Null_Deviance = sapply(models, function(m) m$null.deviance),
+  Residual_Deviance = sapply(models, function(m) m$deviance),
+  AIC = sapply(models, AIC)
+)
+
+# Print the table
+print(results_table)
+
