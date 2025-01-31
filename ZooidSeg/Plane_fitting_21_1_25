@@ -1,0 +1,142 @@
+import open3d as o3d
+import numpy as np
+import pandas as pd
+import ast
+# Define box sizes with 1 cm increments
+box_sizes = [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10,
+             0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18]
+
+# Helper function to extract indices
+def extract_indices(value):
+    return [int(idx) for idx in str(value).split(',') if idx.strip().isdigit()]
+
+
+# Number of iterations for averaging
+num_iterations = 30
+
+
+# Normalize filenames for matching
+def normalize_name(filename):
+    return os.path.splitext(os.path.basename(filename))[0].lower().replace("_shapes_data", "")
+
+
+# Find and load matching model and CSV pairs
+def load_model_csv_pairs(model_dir):
+    model_files = glob.glob(os.path.join(model_dir, "*.ply"))
+    csv_files = glob.glob(os.path.join(model_dir, "*.csv"))
+
+    model_names = {normalize_name(mf): mf for mf in model_files}
+    csv_names = {normalize_name(cf): cf for cf in csv_files}
+
+    matched_pairs = []
+
+    for name, model_path in model_names.items():
+        if name in csv_names:
+            matched_pairs.append((model_path, csv_names[name]))
+        else:
+            print(f"[WARNING] No matching CSV for model: {model_path}")
+
+    return matched_pairs
+
+
+# Complexity score calculation for a single pair
+def calculate_complexity_scores(mesh_path, csv_path):
+    baked_mesh = o3d.io.read_triangle_mesh(mesh_path)
+    baked_mesh.compute_vertex_normals()
+    vertices = np.asarray(baked_mesh.vertices)
+    shapes_data = pd.read_csv(csv_path)
+
+    # Ensure 'index' and 'group' columns exist
+    if 'index' not in shapes_data.columns:
+        shapes_data['index'] = shapes_data.index
+
+    if 'group' not in shapes_data.columns:
+        shapes_data['group'] = 'unknown'
+
+    for box_size in box_sizes:
+        complexity_scores = []
+
+        for value in shapes_data['center3D_geodesic']:
+            point_indices = extract_indices(value)
+
+            if not point_indices:
+                complexity_scores.append(np.nan)
+                continue
+
+            target_point = vertices[point_indices[0]]
+            point_complexities = []
+
+            for _ in range(num_iterations):
+                x, y, z = target_point
+                x_min, x_max = x - box_size / 2, x + box_size / 2
+                y_min, y_max = y - box_size / 2, y + box_size / 2
+                z_min, z_max = z - box_size / 2, z + box_size / 2
+
+                verts_sub = vertices[
+                    (vertices[:, 0] > x_min) & (vertices[:, 0] < x_max) &
+                    (vertices[:, 1] > y_min) & (vertices[:, 1] < y_max) &
+                    (vertices[:, 2] > z_min) & (vertices[:, 2] < z_max)
+                    ]
+
+                if verts_sub.size == 0:
+                    point_complexities.append(np.nan)
+                    continue
+
+                mesh_new = o3d.geometry.PointCloud()
+                mesh_new.points = o3d.utility.Vector3dVector(verts_sub)
+                mesh_new.estimate_normals()
+
+                plane_model, inliers = mesh_new.segment_plane(distance_threshold=0.005,
+                                                              ransac_n=3,
+                                                              num_iterations=1000)
+
+                inlier_cloud = mesh_new.select_by_index(inliers)
+                outlier_cloud = mesh_new.select_by_index(inliers, invert=True)
+
+                complexity_score = (len(outlier_cloud.points) / len(mesh_new.points)) * 100
+                point_complexities.append(complexity_score)
+
+            avg_complexity_score = np.nanmean(point_complexities)
+            complexity_scores.append(avg_complexity_score)
+
+        # Add the averaged complexity score for this box size
+        shapes_data[f'box_{box_size:.3f}'] = complexity_scores
+
+    return shapes_data[['index', 'group'] + [col for col in shapes_data.columns if 'box' in col]]
+
+
+# Load model-CSV pairs
+matched_pairs = [
+ ('D:\\Lob_Shapes_data\\Models\\LobIgloo3.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobIgloo3_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobIgloo4.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobIgloo4_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobIgloo2_high.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobIgloo2_high_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobPrincess2.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobPrincess2_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobNR1.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobNR1_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobIgloo1.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobIgloo1_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobPrincess1.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobPrincess1_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobIUI1.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobIUI1_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobNR2.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobNR2_shapes_data.csv'),
+ ('D:\\Lob_Shapes_data\\Models\\LobKZA1.ply',
+  'D:\\Lob_Shapes_data\\Models\\LobKza1_shapes_data.csv')]#load_model_csv_pairs(model_dir)
+
+# Process each pair
+for model_file, csv_file in matched_pairs:
+    model_name = os.path.splitext(os.path.basename(model_file))[0]
+    print(f"[INFO] Processing model: {model_file} with CSV: {csv_file}")
+
+    # Perform complexity score calculation
+    result_df = calculate_complexity_scores(model_file, csv_file)
+
+    # Save results
+    output_path = os.path.join(output_dir, f"{model_name}_complexity_scores.csv")
+    result_df.to_csv(output_path, index=False)
+    print(f"[INFO] Results saved to {output_path}")
